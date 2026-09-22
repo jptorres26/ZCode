@@ -41,6 +41,12 @@ export function runCommand(command, args, options = {}) {
     throw result.error;
   }
 
+  if (result.signal) {
+    // 子进程被信号终止（例如低内存环境下 tsup 被 SIGKILL）时 status 为 null，
+    // 之前只检查 status !== 0，会把中断当成成功继续执行后续步骤，最终 exit 0 却缺少产物。
+    throw new Error(`${command} ${args.join(" ")} was terminated by signal ${result.signal}`);
+  }
+
   if (typeof result.status === "number" && result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed with code ${result.status}`);
   }
@@ -59,6 +65,12 @@ export function runCommandAndReadStdout(command, args, options = {}) {
 
   if (result.error) {
     throw result.error;
+  }
+
+  if (result.signal) {
+    // 子进程被信号终止（例如低内存环境下 tsup 被 SIGKILL）时 status 为 null，
+    // 之前只检查 status !== 0，会把中断当成成功继续执行后续步骤，最终 exit 0 却缺少产物。
+    throw new Error(`${command} ${args.join(" ")} was terminated by signal ${result.signal}`);
   }
 
   if (typeof result.status === "number" && result.status !== 0) {
