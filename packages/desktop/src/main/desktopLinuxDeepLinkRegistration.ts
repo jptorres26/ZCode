@@ -69,7 +69,9 @@ function resolveLinuxDeepLinkCommand(params: {
 }
 
 function quoteDesktopExecPath(value: string): string {
-  return `"${value.replace(/[\\"`$]/g, (match) => `\\${match}`)}"`;
+  // Desktop Entry 规范要求 Exec 里的字面 % 写成 %%，否则 "%o" 之类会被当成 field code：
+  // AppImage 路径含 % 时 xdg-mime 注册成功，但 zcode:// 深链接会静默无法到达应用。
+  return `"${value.replace(/%/g, "%%").replace(/[\\"`$]/g, (match) => `\\${match}`)}"`;
 }
 
 function isAllowedAppImageDeepLinkArg(arg: string): boolean {
