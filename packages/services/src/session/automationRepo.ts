@@ -13,6 +13,7 @@ import {
   AUTOMATION_CREATE_LIMIT_ERROR_CODE,
   resolveWorkspaceKey,
   modelSelectionSchema,
+  zcodeAutomationScheduleRuleSchema,
   zcodeTaskModeSchema,
   type ZCodeAutomation,
   type ZCodeAutomationCreateParams,
@@ -127,9 +128,7 @@ function rowToAutomation(row: AutomationRow): ZCodeAutomation {
     recurring: row.recurring === 1,
     maxRuns: row.max_runs ?? undefined,
     endAt: row.end_at ?? undefined,
-    scheduleRule: row.schedule_rule
-      ? (JSON.parse(row.schedule_rule) as ZCodeAutomation["scheduleRule"])
-      : undefined,
+    scheduleRule: readSerializedScheduleRule(row.schedule_rule),
     ...(row.schedule_edited_by_user === 1 ? { scheduleEditedByUser: true } : {}),
     runCount: row.run_count,
     enabled: row.enabled === 1,
@@ -193,6 +192,19 @@ function rowToRun(row: AutomationRunRow): ZCodeAutomationRun {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function readSerializedScheduleRule(value: string | null): ZCodeAutomation["scheduleRule"] {
+  if (!value) return undefined;
+  // schedule_rule 是 JSON 文本列，之前直接 JSON.parse 且不校验 schema：一条脏数据会让
+  // rowToAutomation 抛错，automation/list 整体失败；claimDue 在事务内抛错后每个 tick 都回滚，
+  // 调度器完全停摆直到手工修库。与 readSerializedModelSelection 一致，非法值按未设置处理。
+  try {
+    const parsed = zcodeAutomationScheduleRuleSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readSerializedModelSelection(value: string | null): ModelSelection | undefined {
