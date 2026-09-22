@@ -158,7 +158,12 @@ function runBootstrapWithRemoteBuild() {
   runBootstrapDesktopBuild();
 }
 
-runGit(["submodule", "update", "--init", "--recursive", "apps/zcode-cli"]);
+// 开源导出的仓库里 apps/zcode-cli 是普通目录、没有 .gitmodules。从 GitHub ZIP（无 .git）
+// 运行 bootstrap 时这里的 git 会以 128 退出并中断初始化；在正常 clone 里它只是空操作。
+// 仅在存在子模块配置时才同步，与 README 承诺的“无需初始化 submodule”保持一致。
+if (existsSync(resolve(rootDir, ".gitmodules"))) {
+  runGit(["submodule", "update", "--init", "--recursive", "apps/zcode-cli"]);
+}
 
 runPnpm(withRemoteAssets ? ["install", "--config.confirmModulesPurge=false"] : ["install"]);
 
