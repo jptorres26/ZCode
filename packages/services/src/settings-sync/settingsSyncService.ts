@@ -29,9 +29,12 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
+  rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -985,13 +988,27 @@ async function collectExistingCommandNameKeys(rootPath: string): Promise<Set<str
   return nameKeys;
 }
 
+function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
 async function readJsonFileOrEmpty(filePath: string): Promise<Record<string, unknown>> {
+  let raw: string;
   try {
-    const parsed = JSON.parse(await readFile(filePath, "utf-8")) as unknown;
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
+    raw = await readFile(filePath, "utf-8");
+  } catch (error) {
+    // 只有文件不存在才能当成空配置。之前任何读取或解析失败（JSON 语法错误、EACCES、EBUSY 等）
+    // 都被吞成 {}，随后调用方用 {...parsed} 整体覆盖写回，用户已有的 mcp.servers / plugins.dirs
+    // 会被静默清空，而导入仍报告成功。其余错误必须向上抛出让导入失败。
+    if (isFileNotFoundError(error)) {
+      return {};
+    }
+    throw error;
   }
+  const parsed = JSON.parse(raw) as unknown;
+  return isRecord(parsed) ? parsed : {};
 }
 
 function normalizeMcpServerNameKey(name: string): string {
@@ -1132,7 +1149,15 @@ function readStringArray(value: unknown): string[] {
 
 async function writeJsonFile(filePath: string, value: Record<string, unknown>): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+  // 先写临时文件再 rename：直接 writeFile 在进程中途退出时会把配置截断成空文件。
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+    await rename(tempPath, filePath);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 async function addPluginDirToConfig(filePath: string, pluginPath: string): Promise<void> {
