@@ -62,6 +62,10 @@ Set `ZCODE_DATA_BASE_DIR` to use a separate development data directory. For exam
 ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
 ```
 
+### Remote features (SSH/WSL)
+
+Run `pnpm bootstrap:with-remote` first to prepare the remote assets (mock-cdn), then `pnpm dev:desktop`. When connecting to a remote project, choose the "download locally, then upload" asset option. In development the assets come from the local `packages/desktop/mock-cdn` directory and local build outputs and are uploaded to the remote host over SFTP; the CDN is not contacted.
+
 ### Web Development
 
 Use development mode when editing Web or backend source code:
