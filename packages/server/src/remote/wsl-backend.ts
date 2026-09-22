@@ -11,7 +11,10 @@ import type {
   RemoteUploadOptions,
   StdioStream,
 } from "@zcode/server/remote/backend.js";
-import { createCloseEventController } from "@zcode/server/remote/closeEvent.js";
+import {
+  createCloseEventController,
+  resolveChildExitCode,
+} from "@zcode/server/remote/closeEvent.js";
 import {
   normalizeRemoteArch,
   normalizeRemotePlatform,
@@ -360,11 +363,12 @@ export class WSLBackend implements IRemoteBackend {
           onClose.fire(code);
         };
 
-        child.on("exit", (code) => {
-          fireOnce(code ?? 0);
+        // 信号终止时 code 为 null，不能再退化为 0（见 resolveChildExitCode）。
+        child.on("exit", (code, signal) => {
+          fireOnce(resolveChildExitCode(code, signal));
         });
-        child.on("close", (code) => {
-          fireOnce(code ?? 0);
+        child.on("close", (code, signal) => {
+          fireOnce(resolveChildExitCode(code, signal));
         });
 
         resolve({

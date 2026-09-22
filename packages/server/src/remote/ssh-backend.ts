@@ -18,7 +18,10 @@ import {
   normalizeRemotePlatform,
   resolveRemotePlatform,
 } from "@zcode/server/remote/detectEnv.js";
-import { createCloseEventController } from "@zcode/server/remote/closeEvent.js";
+import {
+  createCloseEventController,
+  resolveChildExitCode,
+} from "@zcode/server/remote/closeEvent.js";
 import {
   buildPosixShellExecCommand,
   quotePosixShellArg,
@@ -299,11 +302,13 @@ export class SSHBackend implements IRemoteBackend {
 
         // ssh2 channels may fire 'exit' before 'close', or sometimes
         // only one of them. Listen to both to be safe.
-        channel.on("exit", (code: number | null) => {
-          fireOnce(code ?? 0);
+        channel.on("exit", (code: number | null, signal?: string) => {
+          fireOnce(resolveChildExitCode(code, signal));
         });
         channel.on("close", () => {
-          fireOnce(0);
+          // 正常路径 exit 先于 close 触发，fireOnce 幂等；这里只兜底“从未收到 exit-status 就关闭”
+          // （连接掉线、sshd 中断）的情况，之前固定 fire(0) 会把这类中断当成成功。
+          fireOnce(resolveChildExitCode(null, null));
         });
 
         resolve({
@@ -366,11 +371,11 @@ export class SSHBackend implements IRemoteBackend {
         // ssh2 在短命令场景下可能先发 exit，再异步派发 stdout data。
         // 不能在 exit 事件直接 finish：会把后续 data 丢掉，导致 platform/arch 偶发识别为空。
         // 这里改为只在 close 统一收尾，并优先使用 exit 记录的真实退出码，避免误判成功。
-        channel.on("exit", (code: number | null) => {
-          exitCode = code ?? 0;
+        channel.on("exit", (code: number | null, signal?: string) => {
+          exitCode = resolveChildExitCode(code, signal);
         });
         channel.on("close", (code: number | null) => {
-          const resolvedCode = exitCode ?? code ?? 0;
+          const resolvedCode = exitCode ?? resolveChildExitCode(code, null);
           finish(resolvedCode);
         });
       });

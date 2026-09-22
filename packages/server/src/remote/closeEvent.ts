@@ -1,4 +1,28 @@
+import { constants as osConstants } from "node:os";
 import { Emitter, type Event } from "@zcode/rpc";
+
+const UNKNOWN_EXIT_CODE = 1;
+const SIGNAL_EXIT_CODE_BASE = 128;
+
+/**
+ * 子进程被信号终止时 Node / ssh2 传入的 code 为 null。此前各 backend 用 `code ?? 0` 兜底，
+ * 把 OOM、SIGKILL、连接中断都当成成功退出，上层部署会据此把半途中断的安装记为已完成，
+ * 下次连接因为 marker 匹配而跳过重新部署。这里统一映射为非零：有信号名时按 128+signo 约定，
+ * 没有任何退出信息时为 1。
+ */
+export function resolveChildExitCode(
+  code: number | null | undefined,
+  signal?: string | null,
+): number {
+  if (typeof code === "number") {
+    return code;
+  }
+  if (signal) {
+    const signo = (osConstants.signals as Record<string, number | undefined>)[signal];
+    return SIGNAL_EXIT_CODE_BASE + (signo ?? 0);
+  }
+  return UNKNOWN_EXIT_CODE;
+}
 
 interface CloseEventController {
   event: Event<number>;
