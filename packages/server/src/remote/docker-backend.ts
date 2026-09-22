@@ -269,12 +269,14 @@ export class DockerBackend implements IRemoteBackend {
 
   private async resolveContainer(): Promise<DockerContainerInfo> {
     const containers = await listDockerContainers({ all: true });
-    const matched = containers.find(
-      (container) =>
-        container.name === this.options.container ||
-        container.id === this.options.container ||
-        container.id.startsWith(this.options.container),
-    );
+    const target = this.options.container;
+    // 之前用一个 find 同时做名称、完整 ID 和 ID 前缀匹配，返回的是 docker ps 顺序里的首个命中：
+    // 名字全由十六进制字符组成的容器（如 "cafe"）会被更早创建、ID 恰好以它开头的无关容器抢先。
+    // 这里精确名称优先，其次完整 ID，最后才是前缀。
+    const matched =
+      containers.find((container) => container.name === target) ??
+      containers.find((container) => container.id === target) ??
+      containers.find((container) => container.id.startsWith(target));
 
     if (!matched) {
       throw new Error(`未找到名为 ${this.options.container} 的 Docker 容器`);
