@@ -322,6 +322,14 @@ export function createGitService(options?: {
       return await repo.createWorktree(params.workspacePath, params.branchName);
     },
 
+    async getManagedWorktree(params) {
+      return await repo.getManagedWorktree(params.workspacePath);
+    },
+
+    async removeWorktree(params) {
+      return await repo.removeWorktree(params.workspacePath, params.force === true);
+    },
+
     async getIdentity(params) {
       return await repo.getIdentity(params.workspacePath);
     },

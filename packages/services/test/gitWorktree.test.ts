@@ -148,3 +148,54 @@ test("a manually deleted worktree folder does not block creating one at the same
     assert.equal(await worktreeCount(repo), 2);
   });
 });
+
+test("only ZCode-created linked worktrees are managed and removable", async () => {
+  await withRepo(async (repo, worktreesRootDir) => {
+    const gitRepo = createGitCliRepo({ worktreesRootDir });
+    // 主检出不可删除
+    assert.equal(await gitRepo.getManagedWorktree(repo), null);
+    assert.deepEqual(await gitRepo.removeWorktree(repo, true), {
+      ok: false,
+      reason: "not-managed",
+    });
+    // 用户在别处自建的 worktree 也不可删除
+    const outside = join(repo, "..", "own-worktree");
+    await git(repo, "worktree", "add", "-q", "-b", "own", outside);
+    assert.equal(await gitRepo.getManagedWorktree(outside), null);
+
+    const created = await gitRepo.createWorktree(repo, "feature/x");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const managed = await gitRepo.getManagedWorktree(created.workspacePath);
+    assert.deepEqual(managed, {
+      worktreePath: created.worktreePath,
+      mainWorktreePath: repo,
+      branchName: "feature/x",
+    });
+  });
+});
+
+test("removing a managed worktree needs force when dirty and keeps the branch", async () => {
+  await withRepo(async (repo, worktreesRootDir) => {
+    const gitRepo = createGitCliRepo({ worktreesRootDir });
+    const created = await gitRepo.createWorktree(repo, "cleanup-me");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    await writeFile(join(created.worktreePath, "scratch.txt"), "wip\n");
+
+    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, false), {
+      ok: false,
+      reason: "dirty",
+    });
+    assert.ok(await exists(created.worktreePath));
+
+    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, true), {
+      ok: true,
+      mainWorktreePath: repo,
+      branchName: "cleanup-me",
+    });
+    assert.equal(await exists(created.worktreePath), false);
+    assert.equal(await worktreeCount(repo), 1);
+    assert.equal(await git(repo, "branch", "--list", "cleanup-me"), "cleanup-me");
+  });
+});
