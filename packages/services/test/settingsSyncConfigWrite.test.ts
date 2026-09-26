@@ -146,6 +146,29 @@ test("a workspace config's dangling symlink may not point outside the workspace"
   });
 });
 
+test("a workspace config's symlink to an existing file outside the workspace is not written", async (t) => {
+  if (!isPosix) {
+    t.skip("symlink creation needs extra privileges on Windows");
+    return;
+  }
+  await withWorkspace(async (workspace) => {
+    // 仓库里的链接指向工作区外用户已有的 JSON 文件：不能借导入覆盖它
+    const outside = join(workspace, "..", "user-settings.json");
+    await writeFile(outside, JSON.stringify({ theme: "dark" }));
+    const linkPath = join(workspace, ".zcode", "config.json");
+    await symlink(outside, linkPath);
+
+    const result = await createService().importSelected({
+      workspacePath: workspace,
+      selections: MCP_SELECTION,
+    });
+
+    assert.equal(result.successCount, 0);
+    assert.equal(await readFile(outside, "utf-8"), JSON.stringify({ theme: "dark" }));
+    assert.ok((await lstat(linkPath)).isSymbolicLink());
+  });
+});
+
 test("MCP import fails the item on a symlink loop instead of replacing the link", async (t) => {
   if (!isPosix) {
     t.skip("symlink creation needs extra privileges on Windows");
