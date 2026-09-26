@@ -1,6 +1,4 @@
-export function isSedInPlaceOption(word: string): boolean {
-  return word.startsWith("-i") || word === "--in-place" || word.startsWith("--in-place=");
-}
+export { isSedInPlaceOption, sedCommandIsDangerous } from "./bash-readonly-policy-sed.js";
 
 export function jqCommandIsDangerous(_commandText: string, args: readonly string[]): boolean {
   for (let index = 0; index < args.length; index += 1) {
@@ -45,74 +43,6 @@ function jqFilterIsDangerous(filter: string): boolean {
     /(^|[^A-Za-z0-9_$.])env(?=$|[^A-Za-z0-9_])/.test(filter) ||
     /(^|[^A-Za-z0-9_])(?:include|import)(?=$|[^A-Za-z0-9_])/.test(filter)
   );
-}
-
-export function sedCommandIsDangerous(_commandText: string, args: readonly string[]): boolean {
-  let firstScriptSeen = false;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index] ?? "";
-    if (!arg) continue;
-    if (isSedInPlaceOption(arg)) return true;
-    if (arg === "-e" || arg === "--expression") {
-      index += 1;
-      if (sedScriptWritesToFile(args[index] ?? "")) return true;
-      continue;
-    }
-    if (arg.startsWith("--expression=")) {
-      if (sedScriptWritesToFile(arg.slice("--expression=".length))) return true;
-      continue;
-    }
-    if (arg === "-l" || arg === "--line-length") {
-      index += 1;
-      continue;
-    }
-    if (arg.startsWith("--line-length=")) continue;
-    if (arg === "--") {
-      const script = args[index + 1] ?? "";
-      return sedScriptWritesToFile(script);
-    }
-    if (!arg.startsWith("-") && !firstScriptSeen) {
-      firstScriptSeen = true;
-      if (sedScriptWritesToFile(arg)) return true;
-    }
-  }
-  return false;
-}
-
-// 命令前的地址：行号/范围（1,$!）或正则地址（/re/）。
-const SED_COMMAND_START = /(?:^|[;{\n])\s*(?:(?:[0-9,$!+~-]|\/(?:\\.|[^\/\n])*\/)*)\s*/.source;
-// 之前只识别独立的小写 w 命令；GNU sed 的 W 命令、e 命令以及 s/// 的 w、e 标志同样会写文件或执行命令，
-// 但都被当作只读脚本自动放行。
-const SED_FILE_OR_EXEC_COMMAND = new RegExp(`${SED_COMMAND_START}[wWe](?:\\s|$)`);
-const SED_SUBSTITUTE_START = new RegExp(`${SED_COMMAND_START}s(?=[^\\s;{}\\\\\\n])`, "g");
-
-function sedSubstituteHasWriteOrExecFlag(script: string): boolean {
-  SED_SUBSTITUTE_START.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = SED_SUBSTITUTE_START.exec(script))) {
-    let index = match.index + match[0].length;
-    const delimiter = script[index];
-    if (!delimiter) continue;
-    index += 1;
-    let sections = 0;
-    while (index < script.length && sections < 2) {
-      const char = script[index];
-      if (char === "\\") {
-        index += 2;
-        continue;
-      }
-      if (char === delimiter) sections += 1;
-      index += 1;
-    }
-    if (sections < 2) continue;
-    const flags = /^[A-Za-z0-9]*/.exec(script.slice(index))?.[0] ?? "";
-    if (/[we]/.test(flags)) return true;
-  }
-  return false;
-}
-
-function sedScriptWritesToFile(script: string): boolean {
-  return SED_FILE_OR_EXEC_COMMAND.test(script) || sedSubstituteHasWriteOrExecFlag(script);
 }
 
 export function dateCommandIsDangerous(_commandText: string, args: readonly string[]): boolean {
