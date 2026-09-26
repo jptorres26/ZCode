@@ -34,11 +34,13 @@ dispatchCodeCommentAddToChat(payload + side)
 - 侧：`deletions` → `L`（旧版本行号），`additions` → `R`（新版本行号）。`CodeCommentPayload` 新增可选
   `side?: "L" | "R"`，缺省为 `R`；序列化时写入 `Side:`，解析时读取 `Side:`（缺失视为 `R`），保持往返一致。
 - 选中文本：`MultiFileDiff` 从对应侧的完整内容截取；`PatchDiff` 从 patch 的 hunk 中按侧重建行号 → 文本。
-  取不到任何非空文本时不提交（与文件预览一致）。
-- 载荷：`sourcePath` 为文件绝对路径，`sourceTitle` 为文件名，`workspacePath` / `workspaceIdentity` 取 Review
+  文本在**开始草稿时**截取并随草稿保存，diff 自动刷新不会改变引用的代码；取不到任何非空文本时不提交（与文件预览一致）。
+- 草稿在卡片折叠（不可评论）时清空。
+- 载荷：`sourcePath` 为文件绝对路径（按 workspace 的路径分隔符归一，Windows 下不产生 `\` 与 `/` 混合），`sourceTitle` 为文件名，`workspacePath` / `workspaceIdentity` 取 Review
   面板所在工作区。
-- `R` 侧评论同时写入预览 store，并在 Review diff 的新增侧行内展示，可删除；`L` 侧评论只进入输入框附件
-  （旧版本行号不能与工作区文件预览对齐）。
+- 只有 `unstaged` 来源的新侧是工作区文件：此时 `R` 侧评论同时写入预览 store，并在 Review diff 的新增侧行内展示，
+  可删除，预览 store 中已有的评论也在此展示。`L` 侧评论、以及 `staged`（新侧为 index）/ `branch`（新侧为 HEAD）
+  来源的评论只进入输入框附件，因为它们的行号不能与工作区文件预览对齐。
 - 文案复用 `codeViewer.comment.*`，标签由共享 hook `useCodeCommentLabels` 生成，文件预览同步改用该 hook。
 
 ## 验收

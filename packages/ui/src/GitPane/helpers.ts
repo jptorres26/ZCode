@@ -1,5 +1,6 @@
 import type { GitChangeSourceId, GitDiffResult } from "@zcode/shared";
 import { getFiletypeFromFileName } from "@pierre/diffs";
+import { isAbsoluteFilePath, joinFilePath } from "@/lib/path.js";
 import {
   getPatchPreviewLineContent,
   getPlainTextPatchContentLines,
@@ -208,4 +209,16 @@ function getPatchContentFileName(lines: readonly string[]): string | null {
   }
 
   return null;
+}
+
+/**
+ * 变更文件的绝对路径。Git 返回 `/` 分隔的相对路径；Windows workspace 按其 `\\` 分隔符归一，
+ * 避免 `C:\\repo\\src/a.ts` 这类混合路径与文件树原生路径不一致（评论分桶错开、打开文件重复标签）。
+ */
+export function resolveGitChangeAbsolutePath(workspacePath: string, changePath: string): string {
+  if (isAbsoluteFilePath(changePath)) {
+    return changePath;
+  }
+  const usesBackslash = workspacePath.includes("\\") && !workspacePath.includes("/");
+  return joinFilePath(workspacePath, usesBackslash ? changePath.replace(/\//g, "\\") : changePath);
 }

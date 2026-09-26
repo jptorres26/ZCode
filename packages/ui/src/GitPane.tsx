@@ -20,12 +20,13 @@ import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
-import { getPathLeaf, joinFilePath, isAbsoluteFilePath } from "@/lib/path.js";
+import { getPathLeaf } from "@/lib/path.js";
 import {
   getDiffCacheKey,
   getErrorMessage,
   getGitPaneDiffFindContent,
   getSourceMessageId,
+  resolveGitChangeAbsolutePath,
 } from "@/GitPane/helpers.js";
 import { GitPaneChangeCard } from "@/GitPaneChangeCard.js";
 import {
@@ -457,8 +458,7 @@ export function GitPane({
   };
 
   const resolveChangePath = useCallback(
-    (change: GitPaneFileChange) =>
-      isAbsoluteFilePath(change.path) ? change.path : joinFilePath(workspacePath, change.path),
+    (change: GitPaneFileChange) => resolveGitChangeAbsolutePath(workspacePath, change.path),
     [workspacePath],
   );
 
@@ -489,9 +489,11 @@ export function GitPane({
     [fileActions, resolveChangePath],
   );
 
+  // 只有 unstaged 来源的新侧是工作区文件，行号才能与文件预览对齐；其它来源的评论只进入输入框附件。
+  const sharesWorkingTree = currentDataset.id === "unstaged";
   const commentWorkspace = useMemo(
-    () => ({ workspacePath, workspaceIdentity }),
-    [workspaceIdentity, workspacePath],
+    () => ({ workspacePath, workspaceIdentity, sharesWorkingTree }),
+    [sharesWorkingTree, workspaceIdentity, workspacePath],
   );
 
   const handleOpenChangeInViewer = useCallback(

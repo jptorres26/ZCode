@@ -40,13 +40,18 @@ delete an inline comment ──► removeComment + dispatchCodeCommentRemoveFrom
   `CodeCommentPayload` gets an optional `side?: "L" | "R"`, defaulting to `R`. Serialization writes
   `Side:` and parsing reads it (missing means `R`), so the round trip is lossless.
 - Selected text: `MultiFileDiff` slices it from that side's full content; `PatchDiff` rebuilds a
-  line-number → text map per side from the patch hunks. If no non-empty text is found, nothing is
-  submitted (same as the file viewer).
-- Payload: `sourcePath` is the file's absolute path, `sourceTitle` its file name, and
+  line-number → text map per side from the patch hunks. The text is captured **when the draft starts**
+  and kept with it, so an auto-refresh of the diff can't change the quoted code. If no non-empty text is
+  found, nothing is submitted (same as the file viewer).
+- The draft is cleared when the card collapses (or otherwise stops taking comments).
+- Payload: `sourcePath` is the file's absolute path, normalized to the workspace's path separator
+  (so Windows never mixes `\` and `/`), `sourceTitle` its file name, and
   `workspacePath` / `workspaceIdentity` come from the Review pane's workspace.
-- `R` comments are also added to the preview store and shown inline on the added side of the
-  Review diff, where they can be deleted. `L` comments only become composer attachments, because
-  old-version line numbers can't be lined up with the working-tree file in the file viewer.
+- Only the `unstaged` source's new side is the working-tree file. There, `R` comments are also added
+  to the preview store and shown inline on the added side of the Review diff, where they can be
+  deleted, and comments already in the preview store show there too. `L` comments, and comments in
+  the `staged` (new side is the index) or `branch` (new side is HEAD) sources, only become composer
+  attachments, because their line numbers can't be lined up with the working-tree file.
 - Strings reuse `codeViewer.comment.*`. The labels come from a shared `useCodeCommentLabels` hook,
   which the file viewer now uses too.
 

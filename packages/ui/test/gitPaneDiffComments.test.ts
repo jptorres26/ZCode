@@ -143,3 +143,13 @@ test("the comment side survives serializing into the prompt and parsing it back"
     ],
   );
 });
+
+test("change paths follow the workspace's path separator", async () => {
+  const { resolveGitChangeAbsolutePath } = await import("../src/GitPane/helpers.js");
+  assert.equal(
+    resolveGitChangeAbsolutePath("C:\\Users\\me\\repo", "src/app/a.ts"),
+    "C:\\Users\\me\\repo\\src\\app\\a.ts",
+  );
+  assert.equal(resolveGitChangeAbsolutePath("/home/me/repo", "src/a.ts"), "/home/me/repo/src/a.ts");
+  assert.equal(resolveGitChangeAbsolutePath("/home/me/repo", "/abs/b.ts"), "/abs/b.ts");
+});
