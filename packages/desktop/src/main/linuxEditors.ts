@@ -52,11 +52,7 @@ const LINUX_EDITOR_CANDIDATES: readonly LinuxEditorCandidate[] = [
   { id: "cursor", name: "Cursor", kind: "editor", commands: ["cursor"] },
   { id: "zed", name: "Zed", kind: "editor", commands: ["zed", "zeditor"] },
   { id: "sublime", name: "Sublime Text", kind: "editor", commands: ["subl"] },
-  JETBRAINS("idea", "IntelliJ IDEA", [
-    "idea",
-    "intellij-idea-ultimate",
-    "intellij-idea-community",
-  ]),
+  JETBRAINS("idea", "IntelliJ IDEA", ["idea", "intellij-idea-ultimate", "intellij-idea-community"]),
   JETBRAINS("webstorm", "WebStorm", ["webstorm"]),
   JETBRAINS("pycharm", "PyCharm", ["pycharm", "pycharm-professional", "pycharm-community"]),
   JETBRAINS("goland", "GoLand", ["goland"]),
@@ -191,7 +187,10 @@ export function desktopExecProgramName(exec: string): string | null {
   return null;
 }
 
-export function getLinuxIconFileCandidates(iconName: string, dataDirs: readonly string[]): string[] {
+export function getLinuxIconFileCandidates(
+  iconName: string,
+  dataDirs: readonly string[],
+): string[] {
   if (isAbsolute(iconName)) return [iconName];
   const candidates: string[] = [];
   for (const dataDir of dataDirs) {
@@ -199,7 +198,10 @@ export function getLinuxIconFileCandidates(iconName: string, dataDirs: readonly 
       candidates.push(join(dataDir, "icons", "hicolor", size, "apps", `${iconName}.png`));
     }
     candidates.push(join(dataDir, "icons", "hicolor", "scalable", "apps", `${iconName}.svg`));
-    candidates.push(join(dataDir, "pixmaps", `${iconName}.png`), join(dataDir, "pixmaps", `${iconName}.svg`));
+    candidates.push(
+      join(dataDir, "pixmaps", `${iconName}.png`),
+      join(dataDir, "pixmaps", `${iconName}.svg`),
+    );
   }
   return candidates;
 }
