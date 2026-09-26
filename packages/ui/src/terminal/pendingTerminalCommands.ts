@@ -14,3 +14,24 @@ export function takePendingTerminalCommand(terminalTabId: string): string | unde
   pendingCommands.delete(terminalTabId);
   return command;
 }
+
+/**
+ * 新 workspace 激活后要运行的 setup 命令（按 workspace 身份 key），由 useAppPanels 在 key 变化后取出。
+ * 规范：docs/specs/git-worktree-task.md
+ */
+const pendingWorkspaceSetup = new Map<string, { name: string; command: string }>();
+
+export function setPendingWorkspaceSetup(
+  workspaceKey: string,
+  action: { name: string; command: string },
+): void {
+  pendingWorkspaceSetup.set(workspaceKey, action);
+}
+
+export function takePendingWorkspaceSetup(
+  workspaceKey: string,
+): { name: string; command: string } | undefined {
+  const action = pendingWorkspaceSetup.get(workspaceKey);
+  pendingWorkspaceSetup.delete(workspaceKey);
+  return action;
+}

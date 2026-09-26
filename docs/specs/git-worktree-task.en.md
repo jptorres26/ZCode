@@ -79,10 +79,56 @@ branchName }` when those conditions hold, otherwise `null` (the main checkout an
      the task cache) and says the branch was kept. Failures show a toast.
 - Strings: `workspaceSidebar.deleteWorktree` and `git.worktree.delete.*`, in both `en-US` and `zh-CN`.
 
+## Setup command after creation
+
+- Configuration: `worktree.setup` (a string) in the source workspace's root `.zcode/config.json`. Same
+  rules as a project action's `command`: 1–4000 characters after trimming, no control characters (C0
+  and DEL, including newlines). Parsed by `parseWorktreeSetupConfig` in `@zcode/shared`; independent
+  of `actions`, so one being invalid doesn't affect the other.
+
+  ```json
+  { "worktree": { "setup": "pnpm install" } }
+  ```
+
+- Reading: the source workspace's config is read once each time the dialog opens, with the same
+  reader as the project actions menu (`readTextFile` directly, up to 256 KB, a missing file means not
+  configured, no cache). It reads the source workspace's current file, so the dialog shows exactly
+  the command that will run, even if the new worktree's HEAD has a different version.
+- Dialog: when configured, it shows a "Run setup command after creating" checkbox (checked by
+  default) and the **full** command (monospace, wrapped, never truncated). An invalid, too large or
+  unreadable config shows a hint and offers no run; without a setup command nothing is shown. The
+  checkbox is disabled while creation runs.
+- Running: when creation succeeds and the box is checked, **before** the draft transfer and the
+  workspace switch, `{ name: localized "Setup", command }` is registered in the in-memory one-shot
+  table `pendingWorkspaceSetup`, keyed by the new workspace's identity key (for a local worktree, its
+  path). After the current workspace identity key changes, `useAppPanels` takes it (taking deletes
+  it) and passes it to the project actions handler `handleRunProjectAction`: a new terminal tab in
+  the new workspace's side pane (cwd is the new workspace path) runs the command as its first input.
+  The command never enters tab state, so a reload or restore doesn't run it again.
+- The setup command's outcome doesn't affect the worktree or the draft: its output stays in the
+  terminal, where the user can interrupt, re-run or close it.
+
+```mermaid
+sequenceDiagram
+  participant D as Worktree dialog
+  participant G as IGitService
+  participant P as pendingWorkspaceSetup
+  participant L as WorkspaceShellLayout
+  participant A as useAppPanels
+  participant T as TerminalSession
+  D->>G: createWorktree
+  G-->>D: ok (new workspacePath)
+  D->>P: set(new key, command) (only when checked)
+  D->>L: onCreated
+  L->>L: transfer draft → handleStartDraftInWorkspace
+  A->>P: take(current key) (effect after the key changes)
+  A->>T: new terminal tab + pendingTerminalCommands
+  T->>T: writes command + "\r" after the PTY is created
+```
+
 ## Out of scope for now
 
-- Handing changes off between a worktree and the local checkout, running a setup script after
-  creation (which could plug into project actions), and remote workspaces.
+- Handing changes off between a worktree and the local checkout, and remote workspaces.
 
 ## Acceptance
 
@@ -92,6 +138,10 @@ branchName }` when those conditions hold, otherwise `null` (the main checkout an
   checks out the new branch; subdirectory workspace mapping; a suffix when the directory exists; an
   existing branch and an invalid branch name return issues without creating a directory; uncommitted
   changes are not carried over.
+- `packages/ui/test/projectActions.test.ts`: `worktree.setup` parsing (missing, valid, not a string,
+  control characters, independent of `actions`) and the one-shot semantics of `pendingWorkspaceSetup`.
 - Web dev server + Playwright: choose "Start in new worktree…" in the draft branch menu, enter a
   branch name, and the new workspace opens with the draft text carried over; `git worktree list`
-  shows the new entry.
+  shows the new entry. With `worktree.setup` configured, the dialog shows the full command; creating
+  with the box checked opens a Setup terminal in the new workspace's side pane that runs it, and
+  unchecking it runs nothing.

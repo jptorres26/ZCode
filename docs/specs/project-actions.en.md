@@ -31,8 +31,10 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
 - `parseProjectActionsConfig` in `@zcode/shared` parses it with zod. A missing file or no `actions`
   gives an empty list. Invalid JSON or an invalid `actions` value gives an empty list plus an error,
   which the menu shows; no command runs.
-- The CLI reads the same file with a passthrough top-level schema, so the new `actions` key does not
+- The CLI reads the same file with a passthrough top-level schema, so the new `actions` and `worktree` keys do not
   affect CLI config loading.
+- `worktree.setup` in the same file is the setup command for new worktrees; see
+  [git-worktree-task.en.md](git-worktree-task.en.md).
 - The UI reads the file with `readTextFile` (up to 256 KB; a larger file shows a "too large" hint
   rather than being cut off and reported as invalid JSON) once each time the menu opens, with no cache and no
   watcher; the file is the single source of truth. A not-found error means no actions.

@@ -6,7 +6,10 @@ import type { CodeViewerSource } from "@/lib/codeViewer.js";
 // 保活：side pane terminal 跨 workspace 会话上移到模块级 registry。
 // 关闭 terminal tab 时必须显式 release，杀掉 PTY，避免常驻 registry 造成孤儿进程。
 import { sidePaneTerminalSessionRegistry } from "@/terminal/sidePaneTerminalSessionRegistry.js";
-import { setPendingTerminalCommand } from "@/terminal/pendingTerminalCommands.js";
+import {
+  setPendingTerminalCommand,
+  takePendingWorkspaceSetup,
+} from "@/terminal/pendingTerminalCommands.js";
 import {
   buildTaskSidePaneMemoryKey,
   getSidePaneCollapsedPreference,
@@ -836,6 +839,15 @@ export function useAppPanels(options: {
       workspaceRemoteSessionId,
     ],
   );
+
+  // 新建 worktree 后的 setup 命令：登记发生在切换 workspace 之前，这里在新 workspace key 生效后取出一次。
+  // 规范：docs/specs/git-worktree-task.md
+  useEffect(() => {
+    const setup = takePendingWorkspaceSetup(activeWorkspaceKey);
+    if (setup) {
+      handleRunProjectAction(setup);
+    }
+  }, [activeWorkspaceKey, handleRunProjectAction]);
 
   const handleOpenModelTrajectory = useCallback(
     (params: { taskId: string; title?: string | null }) => {

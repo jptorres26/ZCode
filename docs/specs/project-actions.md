@@ -26,7 +26,8 @@ Codex desktop 的本地环境可以定义“操作”：一键在内置终端运
   最多 50 项；其它字段忽略。拒绝控制字符保证菜单展示的就是一次输入将执行的全部内容，不能在换行后藏第二条命令。
 - 解析由 `@zcode/shared` 的 `parseProjectActionsConfig` 完成（zod 校验）：文件缺失或没有 `actions` → 空列表；
   JSON 无效或 `actions` 不合规 → 空列表并报告错误（菜单提示，不执行任何命令）。
-- CLI 读取同一文件时顶层 schema 为 passthrough，新增 `actions` 不影响 CLI 配置加载。
+- CLI 读取同一文件时顶层 schema 为 passthrough，新增 `actions` 与 `worktree` 不影响 CLI 配置加载。
+- 同一文件的 `worktree.setup` 是新建 worktree 后的 setup 命令，见 [git-worktree-task.md](git-worktree-task.md)。
 - UI 每次打开菜单时直接 `readTextFile` 读取一次（最多 256 KB；超出时提示文件过大，而不是截断后报 JSON 无效），不缓存、不监听；文件即唯一事实来源。读取报文件不存在
   视为没有操作；不使用 `checkFilesExist`（它为聊天路径提及缓存一分钟正负结果，会读到过期结论）。远程工作区经
   `useWorkspaceServices` 的 `fileService` 读取。

@@ -50,6 +50,9 @@ export {
   type ProjectAction,
   type ProjectActionsConfig,
   type ProjectActionsConfigError,
+  parseWorktreeSetupConfig,
+  type WorktreeSetupConfig,
+  type WorktreeSetupConfigError,
 } from "./projectActions.js";
 export {
   buildGitPullRequestLink,
