@@ -30,6 +30,8 @@ spec fills in Linux and adds Xcode on macOS.
   - Terminal: `terminal` → `x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`,
     `kitty`, `alacritty`, `wezterm`, `ghostty` (only one "Terminal" is shown).
   - File manager: `file-manager` → `xdg-open` (shown as "Files").
+    In the UI, `isFileManagerOpenTarget` and the pinned "Open with" order include `file-manager`, treated
+    like Finder and Explorer, so Office mode (which keeps only file-manager targets) has the entry on Linux too.
 - Icons: find the `.desktop` entry in the XDG `applications` directories whose `Exec` program
   matches the command and read its `Icon`. An absolute path is used directly; a theme name is looked
   up as `png` / `svg` in each `hicolor` size and in `pixmaps`. When nothing is found a built-in
