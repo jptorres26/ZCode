@@ -913,6 +913,8 @@ const enUS: Record<string, string> = {
     "Enter a commit message (UI placeholder only, no real git commit will run yet)",
   "git.actionMenu.trigger": "Commit or push",
   "git.actionMenu.trigger.ariaLabel": "Commit or push",
+  "git.actionMenu.pullRequest.create": "Create pull request",
+  "git.actionMenu.pullRequest.createMergeRequest": "Create merge request",
   "git.actionMenu.push": "Push",
   "git.actionMenu.commitDialog.title": "Commit changes",
   "git.actionMenu.commitDialog.description":

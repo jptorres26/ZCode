@@ -59,6 +59,7 @@ import {
   type GitStatusSnapshot,
 } from "./gitCliTypes.js";
 import { discardGitPaths, readStagedRenameOrigins, unstageGitPaths } from "./gitPathMutations.js";
+import { readGitPullRequestLink } from "./gitPullRequestLinkReader.js";
 
 export type {
   GitBranchComparisonChange,
@@ -1675,6 +1676,19 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         setUpstream: !hasTrackingBranch,
         summary: nextStatus.summary,
       };
+    },
+
+    async getPullRequestLink(workspacePath: string) {
+      const status = await this.getStatus(workspacePath);
+      const resolution = status.resolution;
+      const branchName = status.summary.branchName?.trim();
+      if (!resolution.isGitAvailable || !resolution.isRepository) return null;
+      if (status.summary.headRefType !== "branch" || !branchName) return null;
+      return await readGitPullRequestLink({
+        commandProvider,
+        repoRoot: resolution.repoRoot,
+        branchName,
+      });
     },
 
     async getIdentity(workspacePath: string): Promise<GitIdentity> {

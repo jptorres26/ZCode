@@ -46,6 +46,7 @@ import {
   getCurrentSessionFilePaths,
 } from "@/git-action-menu/currentSessionFileScope.js";
 import { useServices } from "@/hooks/useServices.js";
+import { useGitPullRequestToastOptions } from "@/hooks/useGitPullRequestToastOptions.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getErrorMessage } from "@/lib/errorMessage.js";
 import { runUserAction } from "@/lib/userActionTelemetry.js";
@@ -832,6 +833,7 @@ export function GitActionMenu({
 }: GitActionMenuProps) {
   const { gitService } = useServices();
   const { intl, locale } = useZCodeIntl();
+  const resolvePullRequestToastOptions = useGitPullRequestToastOptions(workspacePath);
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [commitDialogLoading, setCommitDialogLoading] = useState(false);
   const [commitDialogState, setCommitDialogState] = useState<GitCommitDialogState | null>(null);
@@ -1097,11 +1099,12 @@ export function GitActionMenu({
                 currentBranchLabel,
             },
           ),
+          await resolvePullRequestToastOptions(),
         );
       }
       return result;
     },
-    [currentBranchLabel, gitService, intl, workspacePath],
+    [currentBranchLabel, gitService, intl, resolvePullRequestToastOptions, workspacePath],
   );
 
   const handleCommitAction = useCallback(
@@ -1198,6 +1201,7 @@ export function GitActionMenu({
               ? "git.actionMenu.commitDialog.toast.commitAndPushSuccess"
               : "git.actionMenu.commitDialog.toast.success",
           }),
+          options?.pushAfterCommit ? await resolvePullRequestToastOptions() : undefined,
         );
         closeCommitDialog();
         onRefreshGit();
@@ -1238,6 +1242,7 @@ export function GitActionMenu({
       intl,
       onRefreshGit,
       pushCurrentBranch,
+      resolvePullRequestToastOptions,
       workspacePath,
     ],
   );

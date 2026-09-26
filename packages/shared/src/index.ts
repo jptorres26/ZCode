@@ -44,6 +44,11 @@ export type {
 } from "./remoteTarget.js";
 export { stripRemoteTargetSecrets } from "./remoteTarget.js";
 export { isExternalOpenAllowedUrl } from "./externalOpenUrl.js";
+export {
+  buildGitPullRequestLink,
+  type GitPullRequestLink,
+  type GitPullRequestProvider,
+} from "./gitPullRequestLink.js";
 export { buildSshRemoteHostKey } from "./remoteSshHostKey.js";
 export { buildRemoteEnvironmentKey } from "./remoteEnvironmentKey.js";
 export type {
