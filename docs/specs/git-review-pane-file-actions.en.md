@@ -58,6 +58,10 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   unscoped `git diff --cached --name-status -z -M --diff-filter=R` is read as well. Paths absent
   from the status (already clean, ignored, or deleted) have nothing to act on and are skipped, so
   repeated requests stay idempotent.
+- Input paths resolve only the parent folder's real path (so symlinks in the workspace path still
+  work) and keep the last component literal: when a change is itself a symlink, stage and discard act
+  on the link, never on its target (otherwise discarding an untracked link to a folder would clean the
+  target folder).
 - `unstage(paths)`:
   - For a staged rename the original path is passed to `git restore --staged` as well, otherwise
     the deletion of the original path stays staged.
@@ -82,7 +86,8 @@ workspace is not a repository. No actions render for datasets with `readonly ===
 - The row context menu offers the same actions, driven by the same availability check.
 - The first context menu item is "Open file". It calls the side pane's existing
   `onOpenCodeViewer` with `{ type: "file", title: <file name>, path: <absolute path> }`, opening
-  the working-tree version in the in-app file viewer. It is disabled for deleted files and hidden
+  the working-tree version in the in-app file viewer. It is disabled for deleted files and for collapsed untracked folders (`dir/`, which have no file to
+  preview), and hidden
   when the host passes no `onOpenCodeViewer`. It is read-only, so every source offers it.
 - The pane header offers bulk actions to the left of Refresh (`size="lg" variant="ghost"`).
   When the source picker and the action group don't fit on one line, the whole group wraps to

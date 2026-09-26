@@ -218,3 +218,28 @@ withRepo(
     assert.deepEqual(await porcelain(dir), ["M  a.txt"]);
   },
 );
+
+withRepo(
+  "stage and discard act on a symlink itself, never on its target",
+  { commit: true },
+  async (dir) => {
+    if (process.platform === "win32") return;
+    const { symlink } = await import("node:fs/promises");
+    const gitRepo = createGitCliRepo();
+    // 未跟踪的目标目录里有未跟踪文件；link 是指向它的未跟踪符号链接
+    await mkdir(join(dir, "target"));
+    await writeFile(join(dir, "target", "keep.txt"), "keep\n");
+    await symlink("target", join(dir, "link"));
+    await symlink("a.txt", join(dir, "file-link"));
+
+    await gitRepo.stage(dir, [join(dir, "file-link")]);
+    assert.deepEqual(
+      (await porcelain(dir)).filter((line) => line.includes("link") || line.includes("a.txt")),
+      ["A  file-link", "?? link"],
+    );
+
+    await gitRepo.discard(dir, [join(dir, "link")], false);
+    assert.equal(await exists(join(dir, "link")), false);
+    assert.equal(await readFile(join(dir, "target", "keep.txt"), "utf-8"), "keep\n");
+  },
+);

@@ -15,7 +15,7 @@ import { DiffViewer } from "@/components/ui/diff-viewer.js";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
-import type { GitPaneFileActionId } from "@/GitPane/fileActions.js";
+import { canOpenGitPaneChangeInViewer, type GitPaneFileActionId } from "@/GitPane/fileActions.js";
 import { useGitPaneDiffComments } from "@/GitPane/useGitPaneDiffComments.js";
 import { getPathLeaf } from "@/lib/path.js";
 import {
@@ -224,7 +224,7 @@ export function GitPaneChangeCard({
           {onOpenFile ? (
             <>
               <ContextMenuItem
-                disabled={change.kind === "deleted"}
+                disabled={!canOpenGitPaneChangeInViewer(change)}
                 onSelect={() => onOpenFile(change)}
               >
                 <FileIcon className="size-4" />
