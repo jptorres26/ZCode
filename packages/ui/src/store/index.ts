@@ -22,7 +22,10 @@ import {
   type CodingPlanQuotaResetAutoPlayReservationAttempt,
   type CodingPlanQuotaResetAutoPlayedSlot,
 } from "@/store/codingPlanQuotaResetState.js";
-import { DEFAULT_CODE_PREVIEW_SETTINGS } from "@/lib/codePreviewSettings.js";
+import {
+  DEFAULT_CODE_PREVIEW_SETTINGS,
+  normalizeReviewDiffStyle,
+} from "@/lib/codePreviewSettings.js";
 import { readSafeLocalStorage, writeSafeLocalStorage } from "@/lib/browserEnvironment.js";
 import {
   applyUiFontSizePx,
@@ -85,6 +88,7 @@ function loadCodePreviewSettings(): CodePreviewSettings {
         typeof parsed.fontSizePx === "number"
           ? Math.min(20, Math.max(12, Math.round(parsed.fontSizePx)))
           : DEFAULT_CODE_PREVIEW_SETTINGS.fontSizePx,
+      reviewDiffStyle: normalizeReviewDiffStyle(parsed.reviewDiffStyle),
     };
   } catch {
     return DEFAULT_CODE_PREVIEW_SETTINGS;

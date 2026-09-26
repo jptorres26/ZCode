@@ -34,6 +34,10 @@ type DiffViewerMultiFileInput = {
 export type DiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> &
   (DiffViewerPatchInput | DiffViewerMultiFileInput) & {
     options?: FileDiffOptions<undefined>;
+    /** 统一 / 并排布局；`options` 中的 diffStyle 仍可覆盖。 */
+    diffStyle?: "unified" | "split";
+    /** 长行换行；关闭时横向滚动。 */
+    wrapLongLines?: boolean;
     disableWorkerPool?: boolean;
     diffClassName?: string;
     fontSizePx?: number;
@@ -53,6 +57,8 @@ function DiffViewerComponent(props: DiffViewerProps) {
   const rendersPatch = isPatchDiffProps(props);
   const {
     options: optionsOverride,
+    diffStyle = "unified",
+    wrapLongLines = false,
     disableWorkerPool = false,
     lightTheme,
     darkTheme,
@@ -77,14 +83,14 @@ function DiffViewerComponent(props: DiffViewerProps) {
   );
   const options = useMemo<FileDiffOptions<undefined>>(
     () => ({
-      diffStyle: "unified",
+      diffStyle,
       diffIndicators: "bars",
       disableFileHeader: true,
       // PatchDiff 只有 patch 里的局部上下文，未包含完整 before/after 内容。
       // 使用 simple 避免展示无法点击展开的 “unmodified lines”；MultiFileDiff 保留可展开提示。
       hunkSeparators: rendersPatch ? "simple" : "line-info",
       lineDiffType: "word-alt",
-      overflow: "scroll",
+      overflow: wrapLongLines ? "wrap" : "scroll",
       unsafeCSS: DIFF_VIEWER_UNSAFE_CSS,
       // @pierre/diffs 的 code 节点在 Shadow DOM 内，外层 Tailwind class 无法命中；
       // 需要覆盖其内部样式时走 unsafeCSS 注入，且只做最小覆盖，不做大范围样式重写。
@@ -99,7 +105,7 @@ function DiffViewerComponent(props: DiffViewerProps) {
       preferredHighlighter: DIFFS_PREFERRED_HIGHLIGHTER,
       ...optionsOverride,
     }),
-    [darkTheme, lightTheme, optionsOverride, rendersPatch, themeType],
+    [darkTheme, diffStyle, lightTheme, optionsOverride, rendersPatch, themeType, wrapLongLines],
   );
 
   const diffNode = rendersPatch ? (
@@ -149,6 +155,8 @@ function isPatchDiffProps(
 function omitPatchDiffProps({
   patch: _patch,
   options: _options,
+  diffStyle: _diffStyle,
+  wrapLongLines: _wrapLongLines,
   disableWorkerPool: _disableWorkerPool,
   diffClassName: _diffClassName,
   fontSizePx: _fontSizePx,
@@ -167,6 +175,8 @@ function omitMultiFileDiffProps({
   oldFile: _oldFile,
   newFile: _newFile,
   options: _options,
+  diffStyle: _diffStyle,
+  wrapLongLines: _wrapLongLines,
   disableWorkerPool: _disableWorkerPool,
   diffClassName: _diffClassName,
   fontSizePx: _fontSizePx,
