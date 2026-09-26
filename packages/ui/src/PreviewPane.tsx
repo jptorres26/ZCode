@@ -29,6 +29,7 @@ import { TID_PREVIEW_PANE } from "@zcode/shared";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { usePptxFileWatch } from "@/hooks/usePptxFileWatch.js";
 import { useCodeCommentLabels } from "@/hooks/useCodeCommentLabels.js";
+import { isMissingFileError } from "@/lib/missingFileError.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
 import {
@@ -123,26 +124,12 @@ function isMarkdownFilePath(path?: string): boolean {
   return normalizedPath.endsWith(".md") || normalizedPath.endsWith(".markdown");
 }
 
-function isPreviewPaneMissingFileError(error: unknown): boolean {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === "ENOENT") {
-      return true;
-    }
-  }
-
-  const message = error instanceof Error ? error.message : String(error);
-  return /\bENOENT\b/i.test(message) || /no such file or directory/i.test(message);
-}
-
 function shouldToastPptxReferenceFileMissing(
   source: CodeViewerSource | null,
   error: unknown,
 ): boolean {
   return (
-    source?.type === "pptx" &&
-    source.referenceNavigation !== undefined &&
-    isPreviewPaneMissingFileError(error)
+    source?.type === "pptx" && source.referenceNavigation !== undefined && isMissingFileError(error)
   );
 }
 
@@ -182,7 +169,7 @@ function resolvePptxPreviewReadErrorMessage(
     incompleteFileMessage: string;
   },
 ): string {
-  if (isPreviewPaneMissingFileError(error)) {
+  if (isMissingFileError(error)) {
     return options.fileMissingMessage;
   }
   if (isPreviewPaneFileTooLargeError(error)) {
@@ -901,7 +888,7 @@ export function PreviewPane({
 
         logger.error(`[PreviewPane] 读取文件失败 path=${fileSource.path}:`, readError);
         setError(
-          isPreviewPaneMissingFileError(readError)
+          isMissingFileError(readError)
             ? intl.formatMessage({ id: "codeViewer.fileMissing" })
             : readError instanceof Error
               ? readError.message
@@ -950,7 +937,7 @@ export function PreviewPane({
 
         logger.error(`[PreviewPane] 读取图片预览失败 path=${imageSource.path}:`, previewError);
         setError(
-          isPreviewPaneMissingFileError(previewError)
+          isMissingFileError(previewError)
             ? intl.formatMessage({ id: "codeViewer.fileMissing" })
             : previewError instanceof Error
               ? previewError.message
@@ -1037,7 +1024,7 @@ export function PreviewPane({
           error: previewError instanceof Error ? previewError.message : String(previewError),
         });
         setError(
-          isPreviewPaneMissingFileError(previewError)
+          isMissingFileError(previewError)
             ? intl.formatMessage({ id: "codeViewer.fileMissing" })
             : previewError instanceof Error
               ? previewError.message
@@ -1205,7 +1192,7 @@ export function PreviewPane({
 
         logger.error(`[PreviewPane] 读取 PDF 预览失败 path=${path}:`, previewError);
         setError(
-          isPreviewPaneMissingFileError(previewError)
+          isMissingFileError(previewError)
             ? intl.formatMessage({ id: "codeViewer.fileMissing" })
             : previewError instanceof Error
               ? previewError.message
@@ -1255,7 +1242,7 @@ export function PreviewPane({
           error: previewError instanceof Error ? previewError.message : String(previewError),
         });
         setError(
-          isPreviewPaneMissingFileError(previewError)
+          isMissingFileError(previewError)
             ? intl.formatMessage({ id: "codeViewer.fileMissing" })
             : isPreviewPaneFileTooLargeError(previewError)
               ? intl.formatMessage({ id: "codeViewer.officeTooLarge" })

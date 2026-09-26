@@ -68,6 +68,8 @@ export interface WorkspaceHeaderActionSectionProps {
   isTerminalOpen: boolean;
   isSidePaneOpen: boolean;
   onToggleTerminal: () => void;
+  /** 提供时显示“运行操作”菜单。规范：docs/specs/project-actions.md */
+  onRunProjectAction?: (action: { name: string; command: string }) => void;
   onToggleSidePane: () => void;
   toggleSidePaneShortcutLabel?: string;
   onSelectedEditorChange?: (editor: EditorInfo | null) => void;

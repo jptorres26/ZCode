@@ -232,6 +232,7 @@ export function App({
     handleOpenWhiteboard,
     handleOpenDeveloperTools,
     handleOpenTerminalTab,
+    handleRunProjectAction,
     handleOpenSubagentSession,
     handleOpenBackgroundBash,
     handleOpenSubagentDirectory,
@@ -563,6 +564,14 @@ export function App({
       handleOpenTerminalTab();
     }
   }, [handleOpenTerminalTab, workspaceReadOnlyReason]);
+  const handleRunProjectActionIfWritable = useCallback(
+    (action: { name: string; command: string }) => {
+      if (!workspaceReadOnlyReason) {
+        handleRunProjectAction(action);
+      }
+    },
+    [handleRunProjectAction, workspaceReadOnlyReason],
+  );
   const handleOpenGitIfWritable = useCallback(() => {
     if (!workspaceReadOnlyReason) {
       handleOpenGit();
@@ -1250,6 +1259,7 @@ export function App({
         handleOpenWhiteboard={handleOpenWhiteboard}
         handleOpenDeveloperTools={handleOpenDeveloperTools}
         handleOpenTerminalTab={handleOpenTerminalTabIfWritable}
+        handleRunProjectAction={handleRunProjectActionIfWritable}
         handleToggleGit={handleToggleGitIfWritable}
         handleToggleSidePane={handleToggleSidePane}
         handleOpenBrowserUrl={handleOpenBrowserUrl}

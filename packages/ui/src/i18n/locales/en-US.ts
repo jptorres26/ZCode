@@ -1514,6 +1514,13 @@ const enUS: Record<string, string> = {
 
   // Terminal
   "terminal.exited": "[Process exited]",
+  "projectActions.trigger": "Run action",
+  "projectActions.title": "Project actions",
+  "projectActions.loading": "Loading actions…",
+  "projectActions.empty":
+    'No actions yet. Add an "actions" list with name and command to .zcode/config.json in this workspace.',
+  "projectActions.invalid":
+    "Couldn't read actions from .zcode/config.json. Check that it is valid JSON and that each action has a name and a command.",
   "terminal.title": "Terminal",
   "terminal.show": "Toggle terminal",
   "terminal.hide": "Toggle terminal",

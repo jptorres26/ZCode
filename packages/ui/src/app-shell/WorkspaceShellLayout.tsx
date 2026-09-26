@@ -303,6 +303,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   handleOpenWhiteboard,
   handleOpenDeveloperTools,
   handleOpenTerminalTab,
+  handleRunProjectAction,
   handleToggleGit,
   handleOpenGitReview,
   handleToggleSidePane,
@@ -1731,6 +1732,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                           isSidePaneOpen={isSidePaneOpen}
                           onRefreshGit={handleRefreshGit}
                           onToggleTerminal={handleToggleTerminal}
+                          onRunProjectAction={handleRunProjectAction}
                           onToggleBrowser={handleToggleBrowser}
                           onToggleSidePane={handleToggleSidePane}
                           toggleSidePaneShortcutLabel={toggleSidePaneShortcutLabel}
