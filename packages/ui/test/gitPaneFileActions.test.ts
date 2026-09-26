@@ -8,10 +8,15 @@ import {
   type GitPaneFileActionContext,
 } from "../src/GitPane/fileActions.js";
 
-function change(path: string, section: GitChangeSectionId, flags: { untracked?: boolean } = {}) {
+function change(
+  path: string,
+  section: GitChangeSectionId,
+  flags: { untracked?: boolean; kind?: "modified" | "added" | "deleted" | "renamed" } = {},
+) {
   return {
     path,
     section,
+    kind: flags.kind ?? "modified",
     isConflicted: section === "conflicted",
     isUntracked: flags.untracked === true,
   };
@@ -78,12 +83,18 @@ test("bulk discard skips conflicts and counts untracked deletions", () => {
     stagePaths: ["a.ts", "n.ts", "c.ts"],
     unstagePaths: [],
     discardPaths: ["a.ts", "n.ts"],
-    discardUntrackedCount: 1,
+    discardDeletedFileCount: 1,
   });
-  assert.deepEqual(getGitPaneBulkActionPlan([change("a.ts", "staged")], ready("staged")), {
-    stagePaths: [],
-    unstagePaths: ["a.ts"],
-    discardPaths: ["a.ts"],
-    discardUntrackedCount: 0,
-  });
+  assert.deepEqual(
+    getGitPaneBulkActionPlan(
+      [change("a.ts", "staged"), change("new.ts", "staged", { kind: "added" })],
+      ready("staged"),
+    ),
+    {
+      stagePaths: [],
+      unstagePaths: ["a.ts", "new.ts"],
+      discardPaths: ["a.ts", "new.ts"],
+      discardDeletedFileCount: 1,
+    },
+  );
 });
