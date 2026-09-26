@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { GitRepositorySummary } from "@zcode/shared";
+import type { GitCreateWorktreeResult, GitRepositorySummary } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import {
   Command,
@@ -15,6 +15,7 @@ import {
   GitBranchCreateDialog,
   GitBranchSwitchAssistDialog,
 } from "@/git-branch-switcher/GitBranchDialogs.js";
+import { GitWorktreeCreateDialog } from "@/git-branch-switcher/GitWorktreeCreateDialog.js";
 import { GitGraphDialog } from "@/git-graph/GitGraphDialog.js";
 import { useGitBranchSwitcher } from "@/hooks/useGitBranchSwitcher.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -26,7 +27,14 @@ import {
   isCoarseTouchDevice,
   shouldRestoreChatInputFocusAfterPickerClose,
 } from "@/lib/pickerFocus.js";
-import { ChevronDownIcon, GitBranchIcon, GitGraph, LoaderIcon, PlusIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  FolderGit2Icon,
+  GitBranchIcon,
+  GitGraph,
+  LoaderIcon,
+  PlusIcon,
+} from "lucide-react";
 
 interface GitBranchSwitcherProps {
   workspacePath: string;
@@ -41,6 +49,8 @@ interface GitBranchSwitcherProps {
   popoverSide?: "top" | "bottom" | "left" | "right";
   avoidPopoverCollisions?: boolean;
   showFooterActions?: boolean;
+  /** 提供时底部显示“在新 worktree 中开始…”。规范：docs/specs/git-worktree-task.md */
+  onWorktreeCreated?: (result: Extract<GitCreateWorktreeResult, { ok: true }>) => void;
 }
 
 export function GitBranchSwitcher({
@@ -56,11 +66,13 @@ export function GitBranchSwitcher({
   popoverSide = "top",
   avoidPopoverCollisions = true,
   showFooterActions = true,
+  onWorktreeCreated,
 }: GitBranchSwitcherProps) {
   const { intl, locale } = useZCodeIntl();
   const numberFormatter = new Intl.NumberFormat(locale);
   const commandListRef = useRef<HTMLDivElement | null>(null);
   const [gitGraphDialogOpen, setGitGraphDialogOpen] = useState(false);
+  const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
   const {
     open,
     setOpen,
@@ -315,6 +327,22 @@ export function GitBranchSwitcher({
                     id: "git.branchSwitcher.createAction",
                   })}
                 </Button>
+                {onWorktreeCreated ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    className="w-full justify-start px-2 text-foreground hover:bg-menu-hover hover:text-foreground"
+                    disabled={mutationPending}
+                    onClick={() => {
+                      setOpen(false);
+                      setWorktreeDialogOpen(true);
+                    }}
+                  >
+                    <FolderGit2Icon className="size-4 text-foreground-subtle" />
+                    {intl.formatMessage({ id: "git.worktree.createAction" })}
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="ghost"
@@ -353,6 +381,15 @@ export function GitBranchSwitcher({
           void createBranchAndSwitch();
         }}
       />
+
+      {onWorktreeCreated ? (
+        <GitWorktreeCreateDialog
+          open={worktreeDialogOpen}
+          workspacePath={workspacePath}
+          onOpenChange={setWorktreeDialogOpen}
+          onCreated={onWorktreeCreated}
+        />
+      ) : null}
 
       <GitGraphDialog
         open={gitGraphDialogOpen}

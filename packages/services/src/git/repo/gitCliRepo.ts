@@ -60,6 +60,8 @@ import {
 } from "./gitCliTypes.js";
 import { discardGitPaths, readStagedRenameOrigins, unstageGitPaths } from "./gitPathMutations.js";
 import { readGitPullRequestLink } from "./gitPullRequestLinkReader.js";
+import { addGitWorktree } from "./gitWorktree.js";
+import { getZCodeDataRootDir } from "../../paths.js";
 
 export type {
   GitBranchComparisonChange,
@@ -538,7 +540,11 @@ function parseGitIndexEntries(stdout: string): GitIndexEntry[] {
     });
 }
 
-export function createGitCliRepo(options?: { commandProvider?: GitCommandProvider }): GitCliRepo {
+export function createGitCliRepo(options?: {
+  commandProvider?: GitCommandProvider;
+  /** 新 worktree 的存放根目录；缺省为 `<ZCode 数据目录>/worktrees`。 */
+  worktreesRootDir?: string;
+}): GitCliRepo {
   const commandProvider = options?.commandProvider ?? createGitCommandProvider();
   const repositoryResolutionRequests = new Map<string, Promise<GitResolvedRepository>>();
   const workspaceRepositoryInfoRequests = new Map<string, Promise<GitWorkspaceRepositoryInfo>>();
@@ -1689,6 +1695,35 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         repoRoot: resolution.repoRoot,
         branchName,
       });
+    },
+
+    async createWorktree(workspacePath: string, branchName: string) {
+      const status = await this.getStatus(workspacePath);
+      const resolution = ensureRepositoryAvailable(status.resolution, "create worktrees");
+      const normalizedBranchName = branchName.trim();
+      // worktree 从 HEAD 新建，不触碰当前检出，因此冲突或进行中的操作不构成阻塞；只校验分支名。
+      const invalidBranchIssue =
+        normalizedBranchName.length === 0
+          ? toInvalidBranchNameIssue()
+          : await validateBranchName(resolution, normalizedBranchName);
+      if (invalidBranchIssue) {
+        return {
+          ok: false as const,
+          branchName: normalizedBranchName || null,
+          issues: [invalidBranchIssue],
+        };
+      }
+      const result = await addGitWorktree({
+        commandProvider,
+        repoRoot: resolution.repoRoot,
+        workspaceInRepoPath: resolution.workspaceInRepoPath,
+        branchName: normalizedBranchName,
+        worktreesRootDir: options?.worktreesRootDir ?? join(getZCodeDataRootDir(), "worktrees"),
+      });
+      if (result.ok) {
+        invalidate(workspacePath);
+      }
+      return result;
     },
 
     async getIdentity(workspacePath: string): Promise<GitIdentity> {

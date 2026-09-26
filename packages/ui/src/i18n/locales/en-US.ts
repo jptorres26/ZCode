@@ -978,6 +978,14 @@ const enUS: Record<string, string> = {
   "git.branchSwitcher.section.branches": "Branches",
   "git.branchSwitcher.empty": "No matching branches",
   "git.branchSwitcher.currentDirty": "Uncommitted changes: {count} files",
+  "git.worktree.createAction": "Start in new worktree...",
+  "git.worktree.dialog.title": "Start in a new worktree",
+  "git.worktree.dialog.description":
+    "Creates a new branch in a separate checkout, so this task doesn't touch your current one. The draft moves to the new workspace.",
+  "git.worktree.dialog.helper":
+    "The worktree starts from the current commit. Uncommitted changes stay in your current checkout.",
+  "git.worktree.dialog.confirm": "Create worktree",
+  "git.worktree.error.createFailed": "Couldn't create the worktree: {error}",
   "git.branchSwitcher.createAction": "Create and switch to new branch...",
   "git.branchSwitcher.createDialog.title": "Create and switch to a new branch",
   "git.branchSwitcher.createDialog.description":

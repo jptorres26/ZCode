@@ -908,6 +908,13 @@ const zhCN: Record<string, string> = {
   "git.branchSwitcher.section.branches": "分支",
   "git.branchSwitcher.empty": "未找到匹配分支",
   "git.branchSwitcher.currentDirty": "未提交的更改：{count} 个文件",
+  "git.worktree.createAction": "在新 worktree 中开始...",
+  "git.worktree.dialog.title": "在新 worktree 中开始",
+  "git.worktree.dialog.description":
+    "在独立的检出中新建分支，此任务不会影响当前检出。草稿会转移到新的工作区。",
+  "git.worktree.dialog.helper": "worktree 基于当前提交创建，未提交的改动留在当前检出中。",
+  "git.worktree.dialog.confirm": "创建 worktree",
+  "git.worktree.error.createFailed": "无法创建 worktree：{error}",
   "git.branchSwitcher.createAction": "创建并检出新分支...",
   "git.branchSwitcher.createDialog.title": "创建并检出新分支",
   "git.branchSwitcher.createDialog.description":

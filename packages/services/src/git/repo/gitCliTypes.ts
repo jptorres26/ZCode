@@ -7,6 +7,7 @@ import type {
   GitIdentity,
   GitLocalBranchListResult,
   GitPullRequestLink,
+  GitCreateWorktreeResult,
   GitPushResult,
   GitRepositorySummary,
   GitWorkspaceRepositoryInfo,
@@ -100,6 +101,7 @@ export interface GitCliRepo {
   ): Promise<{ commitHash: string }>;
   push(workspacePath: string): Promise<GitPushResult>;
   getPullRequestLink(workspacePath: string): Promise<GitPullRequestLink | null>;
+  createWorktree(workspacePath: string, branchName: string): Promise<GitCreateWorktreeResult>;
   getIdentity(workspacePath: string): Promise<GitIdentity>;
 }
 

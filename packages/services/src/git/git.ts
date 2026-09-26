@@ -17,6 +17,8 @@ import type {
   GitLocalBranchListResult,
   GitPathMutationRequest,
   GitPullRequestLink,
+  GitCreateWorktreeRequest,
+  GitCreateWorktreeResult,
   GitPushRequest,
   GitPushResult,
   GitRefreshRequest,
@@ -51,6 +53,8 @@ export interface IGitService {
   push(params: GitPushRequest): Promise<GitPushResult>;
   /** 当前分支上游对应的托管平台新建 PR 链接；无上游或未知平台时为 null。规范：docs/specs/git-pull-request-link.md */
   getPullRequestLink(params: GitRepositoryRequest): Promise<GitPullRequestLink | null>;
+  /** 在仓库外新建 worktree 并检出新分支。规范：docs/specs/git-worktree-task.md */
+  createWorktree(params: GitCreateWorktreeRequest): Promise<GitCreateWorktreeResult>;
   getIdentity(params: GitRepositoryRequest): Promise<GitIdentity>;
   refresh(params: GitRefreshRequest): Promise<GitRefreshResult>;
 }

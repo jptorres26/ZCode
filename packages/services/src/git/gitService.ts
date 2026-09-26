@@ -318,6 +318,10 @@ export function createGitService(options?: {
       return await repo.getPullRequestLink(params.workspacePath);
     },
 
+    async createWorktree(params) {
+      return await repo.createWorktree(params.workspacePath, params.branchName);
+    },
+
     async getIdentity(params) {
       return await repo.getIdentity(params.workspacePath);
     },
