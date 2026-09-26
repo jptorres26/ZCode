@@ -1108,6 +1108,48 @@ export function stampSidePaneTabsOwnership(
   return changed ? { ...state, tabs } : state;
 }
 
+/** 按其它字段（会话 id / 父会话 id）归属、或 workspace 全局的 tab 类型；其余 tab 按 ownerTaskId 归属。 */
+const NON_OWNER_SCOPED_SIDE_PANE_TAB_TYPES = new Set<WorkspaceSidePaneTab["type"]>([
+  "browser-use",
+  "subagent-session",
+  "subagent-directory",
+  "bash-output",
+  "selection-side-chat",
+  "plan-detail",
+  "workflow-run",
+  "workflow-directory",
+  "workflow-actor-session",
+  "workflow-workspace",
+  "workflow-artifact",
+]);
+
+/**
+ * 草稿转正：把 workspace 中归属草稿（ownerTaskId 为 null）的 tab 改归新会话。
+ * 修复原因：v4 草稿没有 draftSessionId，草稿态打开的 tab（如新建 worktree 的 Setup 终端）以 null 归属，
+ * 发出首条消息后归属变为新会话 id，这些 tab 随即被隐藏，违背“草稿转正后 tab 归属无缝衔接”。
+ * 修复依据：在会话创建这一明确事件上移交归属，只处理按 ownerTaskId 归属的 tab。
+ */
+export function adoptDraftSidePaneTabs(
+  state: WorkspaceSidePaneState | null,
+  params: { workspaceKey: string; taskId: string },
+): WorkspaceSidePaneState | null {
+  if (!state) return state;
+  let changed = false;
+  const tabs = state.tabs.map((tab) => {
+    if (
+      tab.ownerTaskId !== null ||
+      !sidePaneTabMatchesWorkspace(tab, params.workspaceKey) ||
+      isWorkspaceGlobalSidePaneTab(tab) ||
+      NON_OWNER_SCOPED_SIDE_PANE_TAB_TYPES.has(tab.type)
+    ) {
+      return tab;
+    }
+    changed = true;
+    return { ...tab, ownerTaskId: params.taskId } as WorkspaceSidePaneTab;
+  });
+  return changed ? { ...state, tabs } : state;
+}
+
 function getVisibleSidePaneTabsByScope(
   tabs: WorkspaceSidePaneTab[],
   scope: SidePaneVisibilityScope,
