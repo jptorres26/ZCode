@@ -295,8 +295,12 @@ export function ghCommandIsDangerous(_commandText: string, args: readonly string
     let value = arg;
     if (arg.startsWith("-")) {
       const equalsIndex = arg.indexOf("=");
-      if (equalsIndex === -1) continue;
-      value = arg.slice(equalsIndex + 1);
+      // 修复原因：之前没有 `=` 的选项词一律跳过，但 gh 接受粘连取值的短选项（`-Rhost/o/r`），
+      // 这类 host 覆盖因此绕过了下面的检查，gh 会带着该 host 的令牌向任意主机发请求。
+      // 修复依据：短选项词第二个字符之后的内容就是它的取值，按同一规则检查。
+      if (equalsIndex !== -1) value = arg.slice(equalsIndex + 1);
+      else if (!arg.startsWith("--") && arg.length > 2) value = arg.slice(2);
+      else continue;
       if (!value) continue;
     }
     if (!value.includes("/") && !value.includes("://") && !value.includes("@")) continue;
