@@ -45,7 +45,9 @@ spec fills in Linux and adds Xcode on macOS.
   xfce4-terminal / ghostty `--working-directory=`, konsole `--workdir`, kitty `--directory`,
   alacritty `--working-directory`, wezterm `start --cwd`).
 - File manager: files use `shell.showItemInFolder`; directories use `shell.openPath`.
-- The remote SSH / WSL VS Code branches are unchanged (`code --folder-uri`).
+- The remote SSH / WSL VS Code branches still use `code --folder-uri`. When launching `code` fails,
+  only macOS falls back to `open -a <VS Code.app>`. On Linux `open` is missing or is openvt, so the
+  original error is returned and no fallback runs.
 
 ## macOS Xcode
 

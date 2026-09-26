@@ -40,7 +40,8 @@ Main 进程 `getInstalledEditors()` / `openInEditor()`。此前 `getEditorDefsFo
   （gnome-terminal / xfce4-terminal / ghostty `--working-directory=`，konsole `--workdir`，
   kitty `--directory`，alacritty `--working-directory`，wezterm `start --cwd`）。
 - 文件管理器：文件用 `shell.showItemInFolder`，目录用 `shell.openPath`。
-- 远程 SSH / WSL 的 VS Code 分支保持不变（`code --folder-uri`）。
+- 远程 SSH / WSL 的 VS Code 分支仍用 `code --folder-uri`。`code` 启动失败时，只有 macOS 回退到
+  `open -a <VS Code.app>`；Linux 上 `open` 不存在或是 openvt，直接返回原始错误，不执行回退。
 
 ## macOS Xcode
 
