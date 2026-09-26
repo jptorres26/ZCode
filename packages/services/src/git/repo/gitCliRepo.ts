@@ -58,7 +58,7 @@ import {
   type GitResolvedRepository,
   type GitStatusSnapshot,
 } from "./gitCliTypes.js";
-import { discardGitPaths, unstageGitPaths } from "./gitPathMutations.js";
+import { discardGitPaths, readStagedRenameOrigins, unstageGitPaths } from "./gitPathMutations.js";
 
 export type {
   GitBranchComparisonChange,
@@ -1511,6 +1511,10 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         });
         ensureGitCommandSucceeded("git status selected paths", scopedStatusResult);
 
+        // 修复原因：按路径裁剪的 status 永远报告不出重命名（另一端在路径集合之外），
+        // 只选中新路径提交已暂存的重命名时，原路径没有进入临时 index 的删除列表，
+        // 提交结果同时保留新旧两个文件，且原路径的删除继续留在暂存区。
+        // 修复依据：与 unstage / discard 一致，从不裁剪的 `git diff --cached -M` 读取重命名原路径。
         const cleanupRepoPaths = Array.from(
           new Set([
             ...repoPaths,
@@ -1518,6 +1522,11 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
               .entries.filter((entry) => repoPaths.includes(entry.path))
               .map((entry) => entry.originalPath)
               .filter((path): path is string => Boolean(path)),
+            ...(await readStagedRenameOrigins({
+              commandProvider,
+              repoRoot: resolution.repoRoot,
+              repoPaths,
+            })),
           ]),
         );
         const stagedEntriesResult = await commandProvider.run({

@@ -202,3 +202,19 @@ withRepo(
     assert.ok(!(await porcelain(dir)).some((line) => line.endsWith("a.txt")));
   },
 );
+
+withRepo(
+  "staged-only commit of a rename commits the deletion of the original path",
+  { commit: true },
+  async (dir) => {
+    await git(dir, "mv", "b.txt", "b2.txt");
+    await writeFile(join(dir, "a.txt"), "staged but not selected\n");
+    await git(dir, "add", "a.txt");
+    await createGitCliRepo().commit(dir, "rename b", ["b2.txt"], { stagedOnly: true });
+    const tree = (await git(dir, "ls-tree", "--name-only", "HEAD")).split("\n").filter(Boolean);
+    assert.ok(tree.includes("b2.txt"));
+    assert.ok(!tree.includes("b.txt"), "original path must not survive in the commit");
+    // 未选中的已暂存文件继续留在暂存区。
+    assert.deepEqual(await porcelain(dir), ["M  a.txt"]);
+  },
+);

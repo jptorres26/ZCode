@@ -128,6 +128,28 @@ export function parseStagedRenameEntries(stdout: string): GitStatusEntry[] {
   return entries;
 }
 
+async function readStagedRenameEntries(context: GitPathMutationContext): Promise<GitStatusEntry[]> {
+  // 按路径裁剪的 status 看不到路径集合之外的另一端，重命名会退化成单独的 A / D。
+  // 重命名对只能从不裁剪的 index 对比中读取；--diff-filter=R 只输出重命名，体积很小。
+  const renames = await runGit(context, "git diff --cached renames", [
+    "diff",
+    "--cached",
+    "--name-status",
+    "-z",
+    "-M",
+    "--diff-filter=R",
+  ]);
+  return parseStagedRenameEntries(renames.stdout);
+}
+
+/** 返回请求路径中已暂存重命名的原路径（供按路径提交时一并提交原路径的删除）。 */
+export async function readStagedRenameOrigins(context: GitPathMutationContext): Promise<string[]> {
+  const renames = await readStagedRenameEntries(context);
+  const plan = planGitPathMutation(renames, context.repoPaths, { includeRenameOrigins: true });
+  const requested = new Set(context.repoPaths);
+  return plan.trackedPaths.filter((path) => !requested.has(path));
+}
+
 async function readMutationEntries(
   context: GitPathMutationContext,
   options: { includeRenameOrigins: boolean },
@@ -145,17 +167,7 @@ async function readMutationEntries(
   if (!options.includeRenameOrigins) {
     return entries;
   }
-  // 按路径裁剪的 status 看不到路径集合之外的另一端，重命名会退化成单独的 A / D。
-  // 重命名对只能从不裁剪的 index 对比中读取；--diff-filter=R 只输出重命名，体积很小。
-  const renames = await runGit(context, "git diff --cached renames", [
-    "diff",
-    "--cached",
-    "--name-status",
-    "-z",
-    "-M",
-    "--diff-filter=R",
-  ]);
-  return [...entries, ...parseStagedRenameEntries(renames.stdout)];
+  return [...entries, ...(await readStagedRenameEntries(context))];
 }
 
 async function hasHeadCommit(context: GitPathMutationContext): Promise<boolean> {
