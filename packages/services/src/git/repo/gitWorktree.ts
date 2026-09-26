@@ -20,6 +20,9 @@ const MAX_WORKTREE_NAME_ATTEMPTS = 99;
 /** ZCode 创建标记：写在链接 worktree 自己的 Git 管理目录中，worktree remove/prune 时随之删除。 */
 const MANAGED_WORKTREE_MARKER = "zcode-worktree.json";
 
+/** 目录名上限（ASCII），留出 `wt-` 前缀与 `-99` 重名后缀的空间，远低于 255 字节。 */
+const MAX_WORKTREE_SLUG_LENGTH = 80;
+
 // Windows 保留设备名：按首个 "." 之前的部分判断，不区分大小写（与 workspaceRemovalSafety 的规则一致）。
 const WINDOWS_RESERVED_BASENAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
@@ -28,8 +31,14 @@ const WINDOWS_RESERVED_BASENAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$
  * @lintignore
  */
 export function toWorktreeSlug(name: string): string {
-  const slug = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+  let slug = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
   if (!slug) return "worktree";
+  // 修复原因：分支名每段都可以很长，扁平化后可能超过常见文件系统 255 字节的单段上限，git worktree add 必然失败。
+  // 修复依据：超过上限时截断并追加原名的短哈希，目录名仍确定且不同分支不会因截断相撞。
+  if (slug.length > MAX_WORKTREE_SLUG_LENGTH) {
+    const hash = createHash("sha256").update(name).digest("hex").slice(0, 8);
+    slug = `${slug.slice(0, MAX_WORKTREE_SLUG_LENGTH - hash.length - 1).replace(/[-.]+$/, "")}-${hash}`;
+  }
   // 修复原因：con、aux、com1 等是合法分支名，但在 Windows 上不能作为目录名，git worktree add 会失败。
   // 修复依据：所有平台统一加前缀（追加后缀无效：CON.xxx 仍是保留名），目录名保持确定。
   return WINDOWS_RESERVED_BASENAME.test(slug) ? `wt-${slug}` : slug;

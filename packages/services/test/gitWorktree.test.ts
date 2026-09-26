@@ -64,6 +64,14 @@ test("slugs keep safe characters and the container is keyed by the repo root", (
   ]) {
     assert.equal(toWorktreeSlug(branch), slug, branch);
   }
+  // 过长的分支名截断并追加哈希，不同分支不相撞
+  const long = (tail: string) =>
+    ["a".repeat(100), "b".repeat(100), `c${tail}`.repeat(50)].join("/");
+  const longSlug = toWorktreeSlug(long("1"));
+  assert.ok(longSlug.length <= 80, longSlug);
+  assert.match(longSlug, /^a+-[0-9a-f]{8}$/);
+  assert.notEqual(longSlug, toWorktreeSlug(long("2")));
+  assert.equal(toWorktreeSlug("x".repeat(80)), "x".repeat(80));
   const container = getWorktreeContainerDir("/wt", "/home/me/my repo");
   assert.match(container, /^\/wt\/my-repo-[0-9a-f]{8}$/);
   assert.notEqual(container, getWorktreeContainerDir("/wt", "/other/my repo"));
