@@ -8,6 +8,7 @@ import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import {
   AUTOMATION_CREATE_LIMIT,
   AUTOMATION_CREATE_LIMIT_ERROR_CODE,
@@ -128,7 +129,7 @@ function rowToAutomation(row: AutomationRow): ZCodeAutomation {
     recurring: row.recurring === 1,
     maxRuns: row.max_runs ?? undefined,
     endAt: row.end_at ?? undefined,
-    scheduleRule: readSerializedScheduleRule(row.schedule_rule),
+    scheduleRule: readSerializedScheduleRule(row.automation_id, row.schedule_rule),
     ...(row.schedule_edited_by_user === 1 ? { scheduleEditedByUser: true } : {}),
     runCount: row.run_count,
     enabled: row.enabled === 1,
@@ -194,17 +195,36 @@ function rowToRun(row: AutomationRunRow): ZCodeAutomationRun {
   };
 }
 
-function readSerializedScheduleRule(value: string | null): ZCodeAutomation["scheduleRule"] {
+const logger = createServiceLogger("automation-repo");
+/** 每个 automation + 原始值只告警一次：rowToAutomation 在每个调度 tick 都会执行。 */
+const warnedInvalidScheduleRules = new Set<string>();
+
+function readSerializedScheduleRule(
+  automationId: string,
+  value: string | null,
+): ZCodeAutomation["scheduleRule"] {
   if (!value) return undefined;
   // schedule_rule 是 JSON 文本列，之前直接 JSON.parse 且不校验 schema：一条脏数据会让
   // rowToAutomation 抛错，automation/list 整体失败；claimDue 在事务内抛错后每个 tick 都回滚，
   // 调度器完全停摆直到手工修库。与 readSerializedModelSelection 一致，非法值按未设置处理。
+  let parsed: ReturnType<typeof zcodeAutomationScheduleRuleSchema.safeParse> | null = null;
   try {
-    const parsed = zcodeAutomationScheduleRuleSchema.safeParse(JSON.parse(value));
-    return parsed.success ? parsed.data : undefined;
+    parsed = zcodeAutomationScheduleRuleSchema.safeParse(JSON.parse(value));
   } catch {
-    return undefined;
+    parsed = null;
   }
+  if (parsed?.success) return parsed.data;
+  // 规则被丢弃后调度会回退到 cronExpr，间隔类规则的频率可能随之改变；留下可排查的告警，
+  // 只记录 automation id 与长度，不记录规则内容。
+  const warnKey = `${automationId}:${value}`;
+  if (!warnedInvalidScheduleRules.has(warnKey)) {
+    warnedInvalidScheduleRules.add(warnKey);
+    logger.warn("[automation] invalid schedule_rule ignored; falling back to cron expression", {
+      automationId,
+      valueLength: value.length,
+    });
+  }
+  return undefined;
 }
 
 function readSerializedModelSelection(value: string | null): ModelSelection | undefined {
