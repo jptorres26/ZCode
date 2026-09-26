@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { installLinuxAppImageDesktopIconBestEffort } from "./desktopLinuxAppImageIcon.js";
+import { quoteDesktopEntryExecArg } from "./desktopEntryExec.js";
 import {
   runXdgCommand,
   XDG_COMMAND_TIMEOUT_MS,
@@ -68,12 +69,6 @@ function resolveLinuxDeepLinkCommand(params: {
   };
 }
 
-function quoteDesktopExecPath(value: string): string {
-  // Desktop Entry 规范要求 Exec 里的字面 % 写成 %%，否则 "%o" 之类会被当成 field code：
-  // AppImage 路径含 % 时 xdg-mime 注册成功，但 zcode:// 深链接会静默无法到达应用。
-  return `"${value.replace(/%/g, "%%").replace(/[\\"`$]/g, (match) => `\\${match}`)}"`;
-}
-
 function isAllowedAppImageDeepLinkArg(arg: string): boolean {
   return (
     APPIMAGE_DEEP_LINK_ARG_NAMES.has(arg) ||
@@ -94,15 +89,14 @@ function resolveAppImageDeepLinkArgs(argv: string[]): string[] {
   return args;
 }
 
-function quoteDesktopExecToken(value: string): string {
-  return quoteDesktopExecPath(value);
-}
-
 function formatDesktopExec(command: LinuxDeepLinkCommand): string {
-  return [command.executablePath, ...command.args]
-    .map(quoteDesktopExecToken)
-    .concat("%U")
-    .join(" ");
+  return (
+    [command.executablePath, ...command.args]
+      // 字面 %、引号与反斜杠的两层转义规则见 quoteDesktopEntryExecArg。
+      .map(quoteDesktopEntryExecArg)
+      .concat("%U")
+      .join(" ")
+  );
 }
 
 function createLinuxDeepLinkDesktopEntry(params: {
