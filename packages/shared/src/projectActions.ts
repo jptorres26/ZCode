@@ -13,16 +13,26 @@ export interface ProjectAction {
   command: string;
 }
 
-export type ProjectActionsConfigError = "invalid-json" | "invalid-actions";
+export type ProjectActionsConfigError = "invalid-json" | "invalid-actions" | "too-large";
 
 export interface ProjectActionsConfig {
   actions: ProjectAction[];
   error?: ProjectActionsConfigError;
 }
 
+// 修复原因：命令中的换行会让写入终端的一次输入变成多条命令，其它控制字符也会让菜单显示与实际执行不一致，
+// 仓库里的配置可借此隐藏后续命令。修复依据：名称与命令都拒绝 C0 控制字符与 DEL，菜单完整展示的就是将执行的内容。
+function hasNoControlCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  return true;
+}
+
 const projectActionSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  command: z.string().trim().min(1).max(4000),
+  name: z.string().trim().min(1).max(80).refine(hasNoControlCharacters),
+  command: z.string().trim().min(1).max(4000).refine(hasNoControlCharacters),
 });
 
 const projectActionsSchema = z.array(projectActionSchema).max(PROJECT_ACTIONS_MAX_COUNT);

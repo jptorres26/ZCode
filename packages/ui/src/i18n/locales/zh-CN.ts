@@ -1424,6 +1424,7 @@ const zhCN: Record<string, string> = {
   // 终端
   "terminal.exited": "[进程已退出]",
   "projectActions.trigger": "运行操作",
+  "projectActions.tooLarge": ".zcode/config.json 超过 256 KB，未加载其中的操作。",
   "projectActions.title": "项目操作",
   "projectActions.loading": "正在读取操作…",
   "projectActions.empty":
