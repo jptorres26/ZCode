@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 import { access, open, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
   GitBranchMutationIssue,
   GitChangeKind,
@@ -687,7 +687,14 @@ export async function normalizeInputPath(
   const rawAbsolutePath = isAbsolute(path)
     ? path
     : resolve(resolution.workspacePath, path.split("/").join(sep));
-  const absolutePath = await realpath(rawAbsolutePath).catch(() => rawAbsolutePath);
+  // 修复原因：对完整路径 realpath 会把最后一段符号链接换成它的目标，暂存会作用到目标，丢弃一个指向目录的
+  // 未跟踪链接甚至会对目标目录执行 git clean。修复依据：Git 跟踪的是链接本身，只解析父目录（兼容工作区路径中的
+  // 符号链接，如 macOS 的 /tmp → /private/tmp），最后一段保持字面路径。
+  const parentPath = dirname(rawAbsolutePath);
+  const absolutePath = join(
+    await realpath(parentPath).catch(() => parentPath),
+    basename(rawAbsolutePath),
+  );
   const repoRelativePath = normalizeGitPath(relative(resolution.repoRoot, absolutePath));
   if (
     repoRelativePath.length === 0 ||

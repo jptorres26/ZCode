@@ -109,7 +109,24 @@ export function getGitPaneDiscardDeletion(
   sourceId: GitChangeSourceId,
 ): "file" | "folder" | null {
   if (!gitPaneDiscardDeletesFile(change, sourceId)) return null;
-  return change.isUntracked && change.repoRelativePath.endsWith("/") ? "folder" : "file";
+  return isCollapsedUntrackedDirectory(change) ? "folder" : "file";
+}
+
+/** status 输出超限后折叠显示的整个未跟踪目录（`dir/`）。 */
+function isCollapsedUntrackedDirectory(
+  change: Pick<GitFileChange, "repoRelativePath" | "isUntracked">,
+): boolean {
+  return change.isUntracked && change.repoRelativePath.endsWith("/");
+}
+
+/**
+ * “打开文件”是否可用：已删除的文件和折叠显示的未跟踪目录都没有可预览的文件。
+ * 修复原因：折叠目录的 kind 为 added，旧条件只排除 deleted，会把目录交给文件预览并报读取错误。
+ */
+export function canOpenGitPaneChangeInViewer(
+  change: Pick<GitFileChange, "repoRelativePath" | "kind" | "isUntracked">,
+): boolean {
+  return change.kind !== "deleted" && !isCollapsedUntrackedDirectory(change);
 }
 
 /** `discardPaths` 的 staged 参数：staged 来源要同时恢复 index 与工作区。 */

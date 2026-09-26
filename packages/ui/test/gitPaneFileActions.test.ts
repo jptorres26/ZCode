@@ -125,3 +125,20 @@ test("a collapsed untracked directory counts as a folder, not as one file", asyn
   );
   assert.equal(getGitPaneDiscardDeletion(change("a.ts", "unstaged"), "unstaged"), null);
 });
+
+test("collapsed untracked folders and deleted files can't be opened in the viewer", async () => {
+  const { canOpenGitPaneChangeInViewer } = await import("../src/GitPane/fileActions.js");
+  assert.equal(
+    canOpenGitPaneChangeInViewer(change("build/", "untracked", { untracked: true, kind: "added" })),
+    false,
+  );
+  assert.equal(
+    canOpenGitPaneChangeInViewer(change("gone.ts", "unstaged", { kind: "deleted" })),
+    false,
+  );
+  assert.equal(
+    canOpenGitPaneChangeInViewer(change("n.ts", "untracked", { untracked: true, kind: "added" })),
+    true,
+  );
+  assert.equal(canOpenGitPaneChangeInViewer(change("a.ts", "unstaged")), true);
+});
