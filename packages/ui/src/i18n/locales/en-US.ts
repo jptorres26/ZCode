@@ -803,11 +803,6 @@ const enUS: Record<string, string> = {
   "treemapping.change.deleted": "Deleted",
   "treemapping.change.viewed": "Viewed only",
   "treemapping.detail.directoryFiles": "{count} files",
-  "diff.placeholder.badge": "UI placeholder",
-  "diff.placeholder.description":
-    "This phase focuses on the right-side Diff panel shell first. Real Git services and command execution will be connected later.",
-  "diff.placeholder.toast":
-    "The Diff panel is still using UI placeholder mode for now because the Git service is not fully wired up yet.",
   "git.readonly": "Read-only",
   "git.head.detached": "Detached HEAD",
   "git.summary.aheadBehind": "Ahead {ahead} / Behind {behind}",
@@ -863,6 +858,14 @@ const enUS: Record<string, string> = {
   "git.action.stage": "Stage",
   "git.action.unstage": "Unstage",
   "git.action.discard": "Discard",
+  "git.fileAction.stageAll": "Stage all",
+  "git.fileAction.unstageAll": "Unstage all",
+  "git.fileAction.discardAll": "Discard all",
+  "git.fileAction.discardConfirmTitle": "Discard changes to {count} file(s)?",
+  "git.fileAction.discardConfirmDescription": "This can't be undone.",
+  "git.fileAction.discardConfirmUntrackedDescription":
+    "{untracked} untracked file(s) will be deleted. This can't be undone.",
+  "git.fileAction.failed": "Git operation failed: {message}",
   "git.action.commit": "Commit",
   "git.action.showTree": "Show file tree",
   "git.action.hideTree": "Hide file tree",

@@ -5,7 +5,7 @@ import type { GitChangeSourceId, GitDiffResult } from "@zcode/shared";
 import { TID_GIT_PANE } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
-import { FileTextIcon, RefreshCw } from "lucide-react";
+import { FileTextIcon, MinusIcon, PlusIcon, RefreshCw, Undo2Icon } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select.js";
 import { type GitPaneFileChange, type GitPaneRepositoryState } from "@/hooks/useGitRepository.js";
 import { useServices } from "@/hooks/useServices.js";
+import { useGitActions } from "@/hooks/useGitActions.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -26,6 +27,13 @@ import {
   getSourceMessageId,
 } from "@/GitPane/helpers.js";
 import { GitPaneChangeCard } from "@/GitPaneChangeCard.js";
+import {
+  getGitPaneBulkActionPlan,
+  getGitPaneFileActions,
+  isGitPaneDiscardStaged,
+  type GitPaneFileActionContext,
+  type GitPaneFileActionId,
+} from "@/GitPane/fileActions.js";
 import { getFileChangeFindState } from "@/GitPane/fileChangeFindSearch.js";
 import { logger } from "@/logger.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
@@ -104,6 +112,30 @@ export function GitPane({
     [currentDataset],
   );
   const normalizedFileChangeFindQuery = fileChangeFindQuery.trim();
+  const gitActions = useGitActions({ workspacePath, onSettled: onRefresh });
+  const fileActionContext = useMemo<GitPaneFileActionContext>(
+    () => ({
+      sourceId: currentDataset.id,
+      datasetReadonly: currentDataset.readonly,
+      repositoryReady:
+        !gitState.loading &&
+        !gitState.error &&
+        gitState.summary.isGitAvailable &&
+        gitState.summary.isRepository,
+    }),
+    [
+      currentDataset.id,
+      currentDataset.readonly,
+      gitState.error,
+      gitState.loading,
+      gitState.summary.isGitAvailable,
+      gitState.summary.isRepository,
+    ],
+  );
+  const bulkActionPlan = useMemo(
+    () => getGitPaneBulkActionPlan(currentChanges, fileActionContext),
+    [currentChanges, fileActionContext],
+  );
 
   const emptyStateCopy = useMemo(() => {
     if (currentSourceOption.id === "last-turn") {
@@ -437,6 +469,38 @@ export function GitPane({
     [onRevealFileInTree, resolveChangePath],
   );
 
+  const fileActionLabels = useMemo<Record<GitPaneFileActionId, string>>(
+    () => ({
+      stage: intl.formatMessage({ id: "git.action.stage" }),
+      unstage: intl.formatMessage({ id: "git.action.unstage" }),
+      discard: intl.formatMessage({ id: "git.action.discard" }),
+    }),
+    [intl],
+  );
+
+  const handleFileAction = useCallback(
+    (change: GitPaneFileChange, action: GitPaneFileActionId) => {
+      if (action === "stage") {
+        void gitActions.stagePaths([change.path]);
+      } else if (action === "unstage") {
+        void gitActions.unstagePaths([change.path]);
+      } else {
+        void gitActions.discardPaths([change.path], {
+          staged: isGitPaneDiscardStaged(currentDataset.id),
+          untrackedCount: change.isUntracked ? 1 : 0,
+        });
+      }
+    },
+    [currentDataset.id, gitActions],
+  );
+
+  const handleDiscardAll = useCallback(() => {
+    void gitActions.discardPaths(bulkActionPlan.discardPaths, {
+      staged: isGitPaneDiscardStaged(currentDataset.id),
+      untrackedCount: bulkActionPlan.discardUntrackedCount,
+    });
+  }, [bulkActionPlan, currentDataset.id, gitActions]);
+
   const contextMenuLabels = useMemo(
     () => ({
       copyAbsolutePath: intl.formatMessage({ id: "fileActions.copyAbsolutePath" }),
@@ -463,7 +527,43 @@ export function GitPane({
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {bulkActionPlan.stagePaths.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              disabled={gitActions.pending}
+              onClick={() => void gitActions.stagePaths(bulkActionPlan.stagePaths)}
+            >
+              <PlusIcon className="size-3.5" />
+              {intl.formatMessage({ id: "git.fileAction.stageAll" })}
+            </Button>
+          ) : null}
+          {bulkActionPlan.unstagePaths.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              disabled={gitActions.pending}
+              onClick={() => void gitActions.unstagePaths(bulkActionPlan.unstagePaths)}
+            >
+              <MinusIcon className="size-3.5" />
+              {intl.formatMessage({ id: "git.fileAction.unstageAll" })}
+            </Button>
+          ) : null}
+          {bulkActionPlan.discardPaths.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              disabled={gitActions.pending}
+              onClick={handleDiscardAll}
+            >
+              <Undo2Icon className="size-3.5" />
+              {intl.formatMessage({ id: "git.fileAction.discardAll" })}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -511,6 +611,10 @@ export function GitPane({
                     <GitPaneChangeCard
                       change={change}
                       contextMenuLabels={contextMenuLabels}
+                      fileActions={getGitPaneFileActions(change, fileActionContext)}
+                      fileActionLabels={fileActionLabels}
+                      fileActionsDisabled={gitActions.pending}
+                      onFileAction={handleFileAction}
                       diffState={diffState}
                       isDiffLoading={isDiffLoading}
                       isExpanded={isExpanded}
