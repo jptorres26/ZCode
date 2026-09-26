@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { GitCreateWorktreeResult } from "@zcode/shared";
-import { DEFAULT_GIT_OUTPUT_BYTES } from "../config.js";
+import { DEFAULT_GIT_COMMAND_TIMEOUT_MS, DEFAULT_GIT_OUTPUT_BYTES } from "../config.js";
 import type { GitCommandProvider } from "../providers/gitCommandProvider.js";
 import { parseGitBranchMutationIssues } from "./gitCliHelpers.js";
 
@@ -51,6 +51,14 @@ export async function addGitWorktree(context: {
   worktreesRootDir: string;
 }): Promise<GitCreateWorktreeResult> {
   const { branchName } = context;
+  // 修复原因：用户手动删除 worktree 目录后，Git 仍登记着它；同名目录再次 add 会报
+  // “missing but already registered worktree”，界面上无法自行修复。
+  // 修复依据：add 前执行 prune，只清理目录已不存在的登记项，不影响仍存在的 worktree。
+  await context.commandProvider.run({
+    cwd: context.repoRoot,
+    args: ["worktree", "prune"],
+    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+  });
   const containerDir = getWorktreeContainerDir(context.worktreesRootDir, context.repoRoot);
   await mkdir(containerDir, { recursive: true });
   const worktreePath = await pickFreeWorktreePath(containerDir, toWorktreeSlug(branchName));
@@ -73,9 +81,14 @@ export async function addGitWorktree(context: {
     return { ok: false, branchName, issues: parseGitBranchMutationIssues(result) };
   }
 
-  const workspacePath =
+  // 修复原因：原 workspace 若是 HEAD 中不存在的子目录（未跟踪、被忽略或新建），映射出的路径在新 worktree
+  // 里并不存在，打开后 cwd、Git 与文件树都会失败。修复依据：映射路径不存在时回退到 worktree 根目录。
+  const mappedWorkspacePath =
     context.workspaceInRepoPath === "."
       ? worktreePath
       : join(worktreePath, ...context.workspaceInRepoPath.split("/"));
+  const workspacePath = (await pathExists(mappedWorkspacePath))
+    ? mappedWorkspacePath
+    : worktreePath;
   return { ok: true, branchName, worktreePath, workspacePath };
 }

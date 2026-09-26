@@ -117,3 +117,34 @@ test("existing or invalid branch names return an issue and add no worktree", asy
     assert.equal(await worktreeCount(repo), 1);
   });
 });
+
+test("an uncommitted subdirectory workspace falls back to the worktree root", async () => {
+  await withRepo(async (repo, worktreesRootDir) => {
+    const untracked = join(repo, "newpkg");
+    await mkdir(untracked);
+    await writeFile(join(untracked, "x.ts"), "x\n");
+    const result = await createGitCliRepo({ worktreesRootDir }).createWorktree(
+      untracked,
+      "try-new",
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.workspacePath, result.worktreePath);
+  });
+});
+
+test("a manually deleted worktree folder does not block creating one at the same path", async () => {
+  await withRepo(async (repo, worktreesRootDir) => {
+    const gitRepo = createGitCliRepo({ worktreesRootDir });
+    const first = await gitRepo.createWorktree(repo, "a/b");
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    await rm(first.worktreePath, { recursive: true, force: true });
+    // 与 a/b 同 slug（a-b），目录已删除但 Git 仍登记着它
+    const second = await gitRepo.createWorktree(repo, "a-b");
+    assert.equal(second.ok, true, JSON.stringify(second));
+    if (!second.ok) return;
+    assert.equal(second.worktreePath, first.worktreePath);
+    assert.equal(await worktreeCount(repo), 2);
+  });
+});

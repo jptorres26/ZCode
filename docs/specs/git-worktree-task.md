@@ -24,8 +24,10 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 2. worktree 根目录：`<ZCode 数据目录>/worktrees/<仓库目录名>-<仓库根路径 sha256 前 8 位>/<分支名 slug>`，
    slug 把 `[A-Za-z0-9._-]` 以外的字符替换为 `-`；目录已存在时依次追加 `-2`、`-3`…（最多 99）。
    放在仓库外，避免出现在原仓库的文件树与 `git status` 中。
-3. 执行 `git worktree add -b <branch> <path> HEAD`：新分支从当前 HEAD 创建。**未提交的改动不会带入新 worktree**。
-4. 若原 workspace 是仓库的子目录，返回的 `workspacePath` 为新 worktree 中对应的同一子目录。
+3. 先执行 `git worktree prune`（只清理目录已被删除的登记项，否则手动删除过的同名目录会让 add 失败），再执行
+   `git worktree add -b <branch> <path> HEAD`：新分支从当前 HEAD 创建。**未提交的改动不会带入新 worktree**。
+4. 若原 workspace 是仓库的子目录，返回的 `workspacePath` 为新 worktree 中对应的同一子目录；该子目录在 HEAD 中
+   不存在（未跟踪、被忽略或新建）时回退为 worktree 根目录。
 5. 失败时解析 git 输出为 issue；成功后使原 workspace 的缓存失效。
 
 ## 交互
@@ -35,7 +37,7 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 - 复用“新建分支”对话框（`mode="worktree"` 切换文案），说明新 worktree 基于当前提交、不包含未提交改动。
 - 成功后：`requestV4ComposerDraftWorkspaceTransfer` 把当前草稿转移到新路径，再
   `handleStartDraftInWorkspace(新路径, undefined, "project")` 打开它并进入草稿；失败时对话框保持打开并以 toast
-  显示第一条 issue。
+  显示第一条 issue。创建进行中不能关闭对话框；宿主组件卸载后返回的结果被忽略，不会再转移草稿或切换 workspace。
 - 文案 `git.worktree.*`，`en-US` 与 `zh-CN` 同步提供。
 
 ## 不在本期
