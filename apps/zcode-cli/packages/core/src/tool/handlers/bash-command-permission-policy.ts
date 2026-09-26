@@ -12,6 +12,7 @@ import {
   type BashCommandRegistryNode,
 } from "./generated/bash-command-registry.js";
 import { isRuntimeReadOnlyBashCommand } from "./bash-semantics.js";
+import { consumeEnvOption } from "./bash-command-env-options.js";
 
 const MAX_SUGGESTED_RULES = 5;
 const ARG_IS_COMMAND = 1;
@@ -278,15 +279,16 @@ function unwrapCommand(argv: readonly string[]): UnwrappedCommand | undefined {
         index += 1;
         continue;
       }
+      if (name === "env") {
+        const consumed = consumeEnvOption(argv, index);
+        if (consumed === undefined) return undefined;
+        if (consumed === 0) break;
+        index += consumed;
+        continue;
+      }
       const optionName = wrapperToken.includes("=")
         ? wrapperToken.slice(0, wrapperToken.indexOf("="))
         : wrapperToken;
-      if (name === "env" && (optionName === "-S" || optionName === "--split-string")) {
-        // env -S 会把它的值重新切分成真正执行的命令行，排在后面那个“可执行文件”之前。
-        // 之前把 -S 的值当普通选项值丢弃，生成的稳定前缀（如 `env git status`）会让
-        // 保存过一次的规则放行任意 `env -S <其它命令> git status`。此时不生成前缀规则，退回精确匹配。
-        return undefined;
-      }
       if (optionsWithValues.has(optionName)) {
         index += wrapperToken.includes("=") ? 1 : 2;
         continue;
