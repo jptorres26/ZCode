@@ -6,6 +6,7 @@ import type { CodeViewerSource } from "@/lib/codeViewer.js";
 // 保活：side pane terminal 跨 workspace 会话上移到模块级 registry。
 // 关闭 terminal tab 时必须显式 release，杀掉 PTY，避免常驻 registry 造成孤儿进程。
 import { sidePaneTerminalSessionRegistry } from "@/terminal/sidePaneTerminalSessionRegistry.js";
+import { setPendingTerminalCommand } from "@/terminal/pendingTerminalCommands.js";
 import {
   buildTaskSidePaneMemoryKey,
   getSidePaneCollapsedPreference,
@@ -23,6 +24,7 @@ import {
   openWhiteboardSidePane,
   openModelTrajectorySidePane,
   openTerminalSidePane,
+  createTerminalSidePaneTabId,
   openSubagentSessionSidePane,
   openSubagentDirectorySidePane,
   openSelectionSideChatPane,
@@ -809,6 +811,32 @@ export function useAppPanels(options: {
     workspaceRemoteSessionId,
   ]);
 
+  /** 项目操作：新终端标签 + 一次性首条输入。规范：docs/specs/project-actions.md */
+  const handleRunProjectAction = useCallback(
+    (action: { name: string; command: string }) => {
+      if (isOfficeMode) return;
+      const tabId = createTerminalSidePaneTabId();
+      setPendingTerminalCommand(tabId, action.command);
+      revealSidePaneForCurrentOwner();
+      commitOpenedSidePaneState((current) =>
+        openTerminalSidePane(current, {
+          id: tabId,
+          title: action.name,
+          cwd: workspaceAbsPath,
+          remoteSessionId: workspaceRemoteSessionId,
+        }),
+      );
+      logger.info(`[App] 运行项目操作 tab=${action.name} workspace=${workspaceAbsPath}`);
+    },
+    [
+      isOfficeMode,
+      commitOpenedSidePaneState,
+      revealSidePaneForCurrentOwner,
+      workspaceAbsPath,
+      workspaceRemoteSessionId,
+    ],
+  );
+
   const handleOpenModelTrajectory = useCallback(
     (params: { taskId: string; title?: string | null }) => {
       if (!params.taskId) {
@@ -1588,6 +1616,7 @@ export function useAppPanels(options: {
     handleOpenWhiteboard,
     handleOpenDeveloperTools,
     handleOpenTerminalTab,
+    handleRunProjectAction,
     handleOpenModelTrajectory,
     handleOpenSubagentSession,
     handleOpenBackgroundBash,

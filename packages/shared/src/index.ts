@@ -45,6 +45,13 @@ export type {
 export { stripRemoteTargetSecrets } from "./remoteTarget.js";
 export { isExternalOpenAllowedUrl } from "./externalOpenUrl.js";
 export {
+  PROJECT_ACTIONS_MAX_COUNT,
+  parseProjectActionsConfig,
+  type ProjectAction,
+  type ProjectActionsConfig,
+  type ProjectActionsConfigError,
+} from "./projectActions.js";
+export {
   buildGitPullRequestLink,
   type GitPullRequestLink,
   type GitPullRequestProvider,

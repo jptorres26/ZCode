@@ -1416,6 +1416,13 @@ const zhCN: Record<string, string> = {
 
   // 终端
   "terminal.exited": "[进程已退出]",
+  "projectActions.trigger": "运行操作",
+  "projectActions.title": "项目操作",
+  "projectActions.loading": "正在读取操作…",
+  "projectActions.empty":
+    '还没有操作。在此工作区的 .zcode/config.json 中添加包含 name 与 command 的 "actions" 列表。',
+  "projectActions.invalid":
+    "无法读取 .zcode/config.json 中的操作。请确认它是有效的 JSON，且每个操作都有 name 与 command。",
   "terminal.title": "终端",
   "terminal.show": "打开终端",
   "terminal.hide": "收起终端",

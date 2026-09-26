@@ -672,13 +672,19 @@ function createDeveloperToolsSidePaneTab(): DeveloperToolsSidePaneTab {
   };
 }
 
+/** 预先生成终端标签 id：项目操作需要在打开标签前登记一次性首条输入。 */
+export function createTerminalSidePaneTabId(): string {
+  return `terminal:${createUuid()}`;
+}
+
 function createTerminalSidePaneTab(options: {
+  id?: string;
   title: string;
   cwd?: string;
   remoteSessionId?: string | null;
 }): TerminalSidePaneTab {
   return {
-    id: `terminal:${createUuid()}`,
+    id: options.id ?? createTerminalSidePaneTabId(),
     type: "terminal",
     openedAt: Date.now(),
     title: options.title,
@@ -1588,7 +1594,7 @@ export function activateDeveloperToolsSidePane(
 
 export function openTerminalSidePane(
   current: WorkspaceSidePaneState | null,
-  options: { title: string; cwd?: string; remoteSessionId?: string | null },
+  options: { id?: string; title: string; cwd?: string; remoteSessionId?: string | null },
 ): WorkspaceSidePaneState {
   return activateSidePaneTab(current, createTerminalSidePaneTab(options));
 }

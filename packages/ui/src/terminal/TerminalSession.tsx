@@ -27,6 +27,7 @@ import {
   type TerminalInputFallbackKeydownCandidate,
   type TerminalInputFallbackHandledData,
 } from "@/terminal/terminalComposedInputFallback.js";
+import { takePendingTerminalCommand } from "@/terminal/pendingTerminalCommands.js";
 import { normalizePowerShellReadlineRedraw } from "@/terminal/terminalDataTransform.js";
 import { getHttpLinksForTerminalBufferLine } from "@/terminal/terminalLinks.js";
 import { mergeTerminalTheme } from "@/terminal/terminalTheme.js";
@@ -583,10 +584,18 @@ export function TerminalSession({
             requestFocus();
           }
 
+          // 项目操作的一次性首条输入：等 shell 的第一段输出（提示符/启动信息）再写入，
+          // 避免部分 shell 在初始化时丢弃预输入。规范：docs/specs/project-actions.md
+          let pendingCommand = takePendingTerminalCommand(persistentKey);
           // data 订阅 → term.write（进 registry，detached 时仍累积 scrollback）
           registryDisposers.push(
             services.terminalService.onDynamicData(id)((data) => {
               term.write(normalizePowerShellReadlineRedraw(data, shell));
+              if (pendingCommand !== undefined) {
+                const command = pendingCommand;
+                pendingCommand = undefined;
+                void services.terminalService.write({ id, data: `${command}\r` });
+              }
             }),
           );
           // exit 订阅（进 registry，与原路径对称：有 onExit 则回调，否则写退出提示）
