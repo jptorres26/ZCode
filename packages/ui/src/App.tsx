@@ -435,7 +435,8 @@ export function App({
     onRefreshGit: handleRefreshGit,
   });
   const activeGitSourceId =
-    gitState.sourceOptions.find((option) => option.id === gitSelectedSourceId)?.id ??
+    gitState.sourceOptions.find((option) => option.id === gitSelectedSourceId && !option.disabled)
+      ?.id ??
     gitState.sourceOptions[0]?.id ??
     "unstaged";
   const gitChangeSummaryBySourceId = useMemo(() => {
