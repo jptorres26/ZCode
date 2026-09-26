@@ -297,7 +297,7 @@ export class SSHBackend implements IRemoteBackend {
           if (code !== 0) {
             console.warn(`[ssh] exec channel failed: code=${code}`);
           }
-          onClose.fire(code ?? 0);
+          onClose.fire(code);
         };
 
         // ssh2 channels may fire 'exit' before 'close', or sometimes
