@@ -807,8 +807,8 @@ const zhCN: Record<string, string> = {
   "git.fileAction.discardAll": "全部丢弃",
   "git.fileAction.discardConfirmTitle": "丢弃 {count} 个文件的变更？",
   "git.fileAction.discardConfirmDescription": "此操作无法撤销。",
-  "git.fileAction.discardConfirmUntrackedDescription":
-    "其中 {untracked} 个未跟踪文件会被删除。此操作无法撤销。",
+  "git.fileAction.discardConfirmDeletesDescription":
+    "其中 {count} 个新文件会从磁盘删除。此操作无法撤销。",
   "git.fileAction.failed": "Git 操作失败：{message}",
   "git.action.commit": "提交",
   "git.action.showTree": "显示文件树",

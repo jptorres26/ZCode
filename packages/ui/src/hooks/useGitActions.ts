@@ -71,7 +71,7 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
   );
 
   const discardPaths = useCallback(
-    async (paths: string[], discardOptions: { staged: boolean; untrackedCount: number }) => {
+    async (paths: string[], discardOptions: { staged: boolean; deletedFileCount: number }) => {
       if (inFlightRef.current || paths.length === 0) {
         return false;
       }
@@ -81,10 +81,10 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
           { count: paths.length },
         ),
         description:
-          discardOptions.untrackedCount > 0
+          discardOptions.deletedFileCount > 0
             ? intl.formatMessage(
-                { id: "git.fileAction.discardConfirmUntrackedDescription" },
-                { untracked: discardOptions.untrackedCount },
+                { id: "git.fileAction.discardConfirmDeletesDescription" },
+                { count: discardOptions.deletedFileCount },
               )
             : intl.formatMessage({ id: "git.fileAction.discardConfirmDescription" }),
         confirmLabel: intl.formatMessage({ id: "git.action.discard" }),

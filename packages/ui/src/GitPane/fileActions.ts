@@ -16,7 +16,7 @@ export interface GitPaneFileActionContext {
 
 type GitPaneActionableChange = Pick<
   GitFileChange,
-  "path" | "section" | "isConflicted" | "isUntracked"
+  "path" | "section" | "kind" | "isConflicted" | "isUntracked"
 >;
 
 function isConflictedChange(change: GitPaneActionableChange): boolean {
@@ -44,8 +44,8 @@ export interface GitPaneBulkActionPlan {
   stagePaths: string[];
   unstagePaths: string[];
   discardPaths: string[];
-  /** 批量丢弃中会被删除的未跟踪文件数量，用于确认文案。 */
-  discardUntrackedCount: number;
+  /** 批量丢弃中会从磁盘删除的新文件数量（未跟踪，或已暂存的新增文件），用于确认文案。 */
+  discardDeletedFileCount: number;
 }
 
 export function getGitPaneBulkActionPlan(
@@ -56,7 +56,7 @@ export function getGitPaneBulkActionPlan(
     stagePaths: [],
     unstagePaths: [],
     discardPaths: [],
-    discardUntrackedCount: 0,
+    discardDeletedFileCount: 0,
   };
   for (const change of changes) {
     const actions = getGitPaneFileActions(change, context);
@@ -68,12 +68,23 @@ export function getGitPaneBulkActionPlan(
     }
     if (actions.includes("discard")) {
       plan.discardPaths.push(change.path);
-      if (change.isUntracked) {
-        plan.discardUntrackedCount += 1;
+      if (gitPaneDiscardDeletesFile(change, context.sourceId)) {
+        plan.discardDeletedFileCount += 1;
       }
     }
   }
   return plan;
+}
+
+/**
+ * 丢弃是否会把文件从磁盘删除：未跟踪文件会被 git clean 删除；staged 来源里新增的文件恢复到 HEAD
+ * 后同样不存在。确认弹框必须明确提示，不能只说“丢弃更改”。
+ */
+export function gitPaneDiscardDeletesFile(
+  change: Pick<GitFileChange, "kind" | "isUntracked">,
+  sourceId: GitChangeSourceId,
+): boolean {
+  return change.isUntracked || (sourceId === "staged" && change.kind === "added");
 }
 
 /** `discardPaths` 的 staged 参数：staged 来源要同时恢复 index 与工作区。 */

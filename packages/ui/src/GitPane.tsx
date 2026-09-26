@@ -30,6 +30,7 @@ import { GitPaneChangeCard } from "@/GitPaneChangeCard.js";
 import {
   getGitPaneBulkActionPlan,
   getGitPaneFileActions,
+  gitPaneDiscardDeletesFile,
   isGitPaneDiscardStaged,
   type GitPaneFileActionContext,
   type GitPaneFileActionId,
@@ -487,7 +488,7 @@ export function GitPane({
       } else {
         void gitActions.discardPaths([change.path], {
           staged: isGitPaneDiscardStaged(currentDataset.id),
-          untrackedCount: change.isUntracked ? 1 : 0,
+          deletedFileCount: gitPaneDiscardDeletesFile(change, currentDataset.id) ? 1 : 0,
         });
       }
     },
@@ -497,7 +498,7 @@ export function GitPane({
   const handleDiscardAll = useCallback(() => {
     void gitActions.discardPaths(bulkActionPlan.discardPaths, {
       staged: isGitPaneDiscardStaged(currentDataset.id),
-      untrackedCount: bulkActionPlan.discardUntrackedCount,
+      deletedFileCount: bulkActionPlan.discardDeletedFileCount,
     });
   }, [bulkActionPlan, currentDataset.id, gitActions]);
 

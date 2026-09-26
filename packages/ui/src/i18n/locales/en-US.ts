@@ -863,8 +863,8 @@ const enUS: Record<string, string> = {
   "git.fileAction.discardAll": "Discard all",
   "git.fileAction.discardConfirmTitle": "Discard changes to {count} file(s)?",
   "git.fileAction.discardConfirmDescription": "This can't be undone.",
-  "git.fileAction.discardConfirmUntrackedDescription":
-    "{untracked} untracked file(s) will be deleted. This can't be undone.",
+  "git.fileAction.discardConfirmDeletesDescription":
+    "{count} new file(s) will be deleted from disk. This can't be undone.",
   "git.fileAction.failed": "Git operation failed: {message}",
   "git.action.commit": "Commit",
   "git.action.showTree": "Show file tree",

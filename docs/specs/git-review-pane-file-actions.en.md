@@ -82,8 +82,8 @@ workspace is not a repository. No actions render for datasets with `readonly ===
 - The row context menu offers the same actions, driven by the same availability check.
 - The pane header offers bulk actions to the left of Refresh (`size="lg" variant="ghost"`).
 - Every discard (single or bulk) first opens a confirmation (`confirmVariant="destructive"`) that
-  states the file count, that it cannot be undone, and, when untracked files are included, that
-  they will be deleted.
+  states the file count and that it cannot be undone; when files will be deleted from disk
+  (untracked files, or files newly added in the `staged` source) it also states how many.
 - While a request is in flight all action buttons are disabled; on failure a toast shows the
   service error message and `logger.warn` records it (no file contents are logged).
 - Copy uses `git.fileAction.*` i18n keys, provided in both `en-US` and `zh-CN`.
