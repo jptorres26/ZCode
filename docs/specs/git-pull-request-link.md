@@ -23,7 +23,8 @@ Codex desktop 在推送后可以直接发起 PR。ZCode 只有提交与推送，
    没有上游返回 `null`。
 3. 远程地址：`git remote get-url <remote>`（已应用 `insteadOf`）。支持 `https://`、`http://`、`ssh://`、
    `git://` 与 scp 形式 `user@host:owner/repo.git`。网页地址一律去掉用户名、密码与令牌；
-   ssh / git / scp 形式转为 `https://host/...` 并丢弃 ssh 端口；http(s) 保留原端口与协议。
+   ssh / git / scp 形式转为 `https://host/...` 并丢弃 ssh 端口；这些形式的主机可能是 ssh 别名：
+   `github.com-work` 这类“已知平台主机-后缀”还原为规范主机，不含点的裸别名无法推断网页主机，返回 `null`；http(s) 保留原端口与协议。
    路径至少两段、不含空段或 `..`，去掉末尾 `.git` 与 `/`。主机名只接受 `[A-Za-z0-9.-]`。
 4. 平台：主机为 `github.com` 或包含 `github` → GitHub；`gitlab.com` 或包含 `gitlab` → GitLab；
    `bitbucket.org` → Bitbucket；其它返回 `null`（不猜测未知平台的 URL 格式）。

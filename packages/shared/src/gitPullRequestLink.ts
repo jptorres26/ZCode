@@ -20,6 +20,19 @@ interface GitRemoteWebLocation {
 }
 
 const HOST_PATTERN = /^[A-Za-z0-9.-]+$/;
+/** 多账号常见的 ssh 别名写法：`github.com-work`、`gitlab.com_personal`。 */
+const SSH_ALIAS_OF_KNOWN_HOST = /^(github\.com|gitlab\.com|bitbucket\.org)[-_][A-Za-z0-9._-]+$/i;
+
+/**
+ * ssh / scp 形式里的“主机”可能只是 ~/.ssh/config 的别名，不能直接当网页主机。
+ * 修复原因：`git@github.com-work:org/repo.git` 之前被当成 github 主机，拼出打不开的 `https://github.com-work/...`。
+ * 修复依据：已知平台的“主机名-后缀”别名还原为规范主机；不含点的裸别名无法推断网页主机，放弃生成链接。
+ */
+function resolveSshWebHost(host: string): string | null {
+  const alias = SSH_ALIAS_OF_KNOWN_HOST.exec(host);
+  if (alias) return alias[1]!.toLowerCase();
+  return host.includes(".") ? host : null;
+}
 const SCP_REMOTE_PATTERN = /^(?:[^@/:]+@)?([^/:]+):(?!\/\/)(.+)$/;
 
 function normalizeRepositoryPath(rawPath: string): string | null {
@@ -56,15 +69,19 @@ export function parseGitRemoteWebLocation(remoteUrl: string): GitRemoteWebLocati
       return null;
     }
     const path = normalizeRepositoryPath(pathname);
-    if (!HOST_PATTERN.test(host) || !path) {
+    if (!path) {
       return null;
     }
     if (url.protocol === "https:" || url.protocol === "http:") {
+      if (!HOST_PATTERN.test(host)) return null;
       const port = url.port ? `:${url.port}` : "";
       return { origin: `${url.protocol}//${host}${port}`, host, path };
     }
     if (url.protocol === "ssh:" || url.protocol === "git:" || url.protocol === "git+ssh:") {
-      return { origin: `https://${host}`, host, path };
+      const webHost = resolveSshWebHost(host);
+      return webHost && HOST_PATTERN.test(webHost)
+        ? { origin: `https://${webHost}`, host: webHost, path }
+        : null;
     }
     return null;
   }
@@ -75,10 +92,11 @@ export function parseGitRemoteWebLocation(remoteUrl: string): GitRemoteWebLocati
   }
   const host = scp[1]!;
   const path = normalizeRepositoryPath(scp[2]!);
-  if (!HOST_PATTERN.test(host) || !path) {
+  const webHost = resolveSshWebHost(host);
+  if (!webHost || !HOST_PATTERN.test(webHost) || !path) {
     return null;
   }
-  return { origin: `https://${host}`, host, path };
+  return { origin: `https://${webHost}`, host: webHost, path };
 }
 
 function detectProvider(host: string): GitPullRequestProvider | null {

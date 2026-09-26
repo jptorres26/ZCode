@@ -22,6 +22,16 @@ test("remote URLs resolve to credential-free web locations", () => {
       { origin: "http://gitlab.internal:8080", path: "team/repo" },
     ],
     ["git://github.com/example/demo", { origin: "https://github.com", path: "example/demo" }],
+    ["git@github.com-work:org/repo.git", { origin: "https://github.com", path: "org/repo" }],
+    [
+      "ssh://git@gitlab.com_personal/group/repo.git",
+      { origin: "https://gitlab.com", path: "group/repo" },
+    ],
+    ["git@github-work:org/repo.git", null],
+    [
+      "git@github.com.evil.example:org/repo.git",
+      { origin: "https://github.com.evil.example", path: "org/repo" },
+    ],
     ["/srv/git/demo.git", null],
     ["file:///srv/git/demo.git", null],
     ["https://github.com/only-owner", null],
