@@ -71,7 +71,10 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
   );
 
   const discardPaths = useCallback(
-    async (paths: string[], discardOptions: { staged: boolean; deletedFileCount: number }) => {
+    async (
+      paths: string[],
+      discardOptions: { staged: boolean; deletedFileCount: number; deletedFolderCount: number },
+    ) => {
       if (inFlightRef.current || paths.length === 0) {
         return false;
       }
@@ -81,12 +84,25 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
           { count: paths.length },
         ),
         description:
-          discardOptions.deletedFileCount > 0
+          discardOptions.deletedFolderCount > 0
             ? intl.formatMessage(
-                { id: "git.fileAction.discardConfirmDeletesDescription" },
-                { count: discardOptions.deletedFileCount },
+                {
+                  id:
+                    discardOptions.deletedFileCount > 0
+                      ? "git.fileAction.discardConfirmDeletesFoldersDescription"
+                      : "git.fileAction.discardConfirmDeletesFoldersOnlyDescription",
+                },
+                {
+                  fileCount: discardOptions.deletedFileCount,
+                  folderCount: discardOptions.deletedFolderCount,
+                },
               )
-            : intl.formatMessage({ id: "git.fileAction.discardConfirmDescription" }),
+            : discardOptions.deletedFileCount > 0
+              ? intl.formatMessage(
+                  { id: "git.fileAction.discardConfirmDeletesDescription" },
+                  { count: discardOptions.deletedFileCount },
+                )
+              : intl.formatMessage({ id: "git.fileAction.discardConfirmDescription" }),
         confirmLabel: intl.formatMessage({ id: "git.action.discard" }),
         confirmVariant: "destructive",
       });

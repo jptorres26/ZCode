@@ -14,7 +14,9 @@ function change(
   flags: { untracked?: boolean; kind?: "modified" | "added" | "deleted" | "renamed" } = {},
 ) {
   return {
-    path,
+    // 与服务端一致：绝对路径经 resolve 后去掉末尾 `/`，repoRelativePath 保留 git 原样输出
+    path: path.replace(/\/$/, ""),
+    repoRelativePath: path,
     section,
     kind: flags.kind ?? "modified",
     isConflicted: section === "conflicted",
@@ -84,6 +86,7 @@ test("bulk discard skips conflicts and counts untracked deletions", () => {
     unstagePaths: [],
     discardPaths: ["a.ts", "n.ts"],
     discardDeletedFileCount: 1,
+    discardDeletedFolderCount: 0,
   });
   assert.deepEqual(
     getGitPaneBulkActionPlan(
@@ -95,6 +98,30 @@ test("bulk discard skips conflicts and counts untracked deletions", () => {
       unstagePaths: ["a.ts", "new.ts"],
       discardPaths: ["a.ts", "new.ts"],
       discardDeletedFileCount: 1,
+      discardDeletedFolderCount: 0,
     },
   );
+});
+
+test("a collapsed untracked directory counts as a folder, not as one file", async () => {
+  const { getGitPaneDiscardDeletion } = await import("../src/GitPane/fileActions.js");
+  const plan = getGitPaneBulkActionPlan(
+    [
+      change("build/", "untracked", { untracked: true }),
+      change("n.ts", "untracked", { untracked: true }),
+      change("a.ts", "unstaged"),
+    ],
+    ready("unstaged"),
+  );
+  assert.equal(plan.discardDeletedFolderCount, 1);
+  assert.equal(plan.discardDeletedFileCount, 1);
+  assert.equal(
+    getGitPaneDiscardDeletion(change("build/", "untracked", { untracked: true }), "unstaged"),
+    "folder",
+  );
+  assert.equal(
+    getGitPaneDiscardDeletion(change("n.ts", "untracked", { untracked: true }), "unstaged"),
+    "file",
+  );
+  assert.equal(getGitPaneDiscardDeletion(change("a.ts", "unstaged"), "unstaged"), null);
 });

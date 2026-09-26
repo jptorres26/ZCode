@@ -90,7 +90,10 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   about 200px wide).
 - Every discard (single or bulk) first opens a confirmation (`confirmVariant="destructive"`) that
   states the file count and that it cannot be undone; when files will be deleted from disk
-  (untracked files, or files newly added in the `staged` source) it also states how many.
+  (untracked files, or files newly added in the `staged` source) it also states how many. After
+  status output overflows and switches to collapsed mode, a whole untracked folder shows as a single
+  `dir/` entry while discarding deletes everything inside it: such entries are counted as folders
+  and the text says "N untracked folder(s), with everything inside them", never as one file.
 - While a request is in flight all action buttons are disabled; on failure a toast shows the
   service error message and `logger.warn` records it (no file contents are logged).
 - Copy uses `git.fileAction.*` i18n keys, provided in both `en-US` and `zh-CN`.
