@@ -40,6 +40,10 @@ export function getGitPaneFileActions(
   return [];
 }
 
+/**
+ * getGitPaneBulkActionPlan 的返回类型。
+ * @lintignore
+ */
 export interface GitPaneBulkActionPlan {
   stagePaths: string[];
   unstagePaths: string[];
@@ -86,7 +90,7 @@ export function getGitPaneBulkActionPlan(
  * 丢弃是否会把文件从磁盘删除：未跟踪文件会被 git clean 删除；staged 来源里新增的文件恢复到 HEAD
  * 后同样不存在。确认弹框必须明确提示，不能只说“丢弃更改”。
  */
-export function gitPaneDiscardDeletesFile(
+function gitPaneDiscardDeletesFile(
   change: Pick<GitFileChange, "kind" | "isUntracked">,
   sourceId: GitChangeSourceId,
 ): boolean {

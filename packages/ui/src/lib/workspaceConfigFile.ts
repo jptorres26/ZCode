@@ -5,7 +5,7 @@ import { joinFilePath } from "@/lib/path.js";
 /** 与文件服务单次读取上限一致；配置更大时明确提示，而不是截断后报 JSON 无效。 */
 const WORKSPACE_CONFIG_READ_BYTES = 256 * 1024;
 
-export type WorkspaceConfigFileContent =
+type WorkspaceConfigFileContent =
   | { status: "ok"; content: string | null }
   | { status: "too-large" };
 
