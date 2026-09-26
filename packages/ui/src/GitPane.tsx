@@ -540,7 +540,9 @@ export function GitPane({
       data-testid={TID_GIT_PANE}
       className="flex h-full min-h-0 flex-col bg-background"
     >
-<div className="flex items-center justify-between gap-3 p-3">
+      {/* 修复原因：右侧操作组带 min-w-0 且 justify-end，窄面板（手机 Web 侧栏约 200px）放不下时按钮向左溢出，
+        压在来源选择器上。修复依据：头部允许换行、操作组不再压缩到 0，放不下时整组换到下一行并右对齐。 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3">
         <Select value={currentSourceOption.id} onValueChange={handleSelectSource}>
           <SelectTrigger className="max-w-full" size="lg">
             <SelectValue />
@@ -554,7 +556,7 @@ export function GitPane({
           </SelectContent>
         </Select>
 
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {bulkActionPlan.stagePaths.length > 0 ? (
             <Button
               type="button"

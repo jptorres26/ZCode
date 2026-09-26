@@ -81,6 +81,9 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   focus; on touch (`hover: none`) they are always visible, so mobile Web does not hide core actions.
 - The row context menu offers the same actions, driven by the same availability check.
 - The pane header offers bulk actions to the left of Refresh (`size="lg" variant="ghost"`).
+  When the source picker and the action group don't fit on one line, the whole group wraps to
+  the next line, right-aligned, and never overlaps the source picker (the mobile web side pane is
+  about 200px wide).
 - Every discard (single or bulk) first opens a confirmation (`confirmVariant="destructive"`) that
   states the file count and that it cannot be undone; when files will be deleted from disk
   (untracked files, or files newly added in the `staged` source) it also states how many.
