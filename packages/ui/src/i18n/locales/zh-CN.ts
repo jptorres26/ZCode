@@ -924,6 +924,14 @@ const zhCN: Record<string, string> = {
   "git.worktree.dialog.helper": "worktree 基于当前提交创建，未提交的改动留在当前检出中。",
   "git.worktree.dialog.confirm": "创建 worktree",
   "git.worktree.error.createFailed": "无法创建 worktree：{error}",
+  "git.worktree.setup.label": "创建后运行 setup 命令",
+  "git.worktree.setup.hint":
+    "来自 .zcode/config.json 的 worktree.setup，将在新 worktree 的终端中运行。",
+  "git.worktree.setup.invalid":
+    ".zcode/config.json 中的 worktree.setup 无效，不会运行 setup 命令。",
+  "git.worktree.setup.tooLarge": ".zcode/config.json 过大无法读取，不会运行 setup 命令。",
+  "git.worktree.setup.unreadable": "无法读取 .zcode/config.json，不会运行 setup 命令。",
+  "git.worktree.setup.terminalTitle": "Setup",
   "git.branchSwitcher.createAction": "创建并检出新分支...",
   "git.branchSwitcher.createDialog.title": "创建并检出新分支",
   "git.branchSwitcher.createDialog.description":

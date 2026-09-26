@@ -1,4 +1,4 @@
-import { type FormEvent } from "react";
+import { type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import {
   Dialog,
@@ -44,6 +44,8 @@ interface GitBranchCreateDialogProps {
   onBranchNameChange: (nextValue: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
+  /** 名称输入与按钮之间的附加内容（worktree 的 setup 命令选项）。 */
+  children?: ReactNode;
 }
 
 export function GitBranchCreateDialog({
@@ -55,6 +57,7 @@ export function GitBranchCreateDialog({
   onBranchNameChange,
   onCancel,
   onSubmit,
+  children,
 }: GitBranchCreateDialogProps) {
   const { intl } = useZCodeIntl();
   const messageIds = CREATE_DIALOG_MESSAGE_IDS[mode];
@@ -106,6 +109,8 @@ export function GitBranchCreateDialog({
               {intl.formatMessage({ id: messageIds.helper })}
             </p>
           </div>
+
+          {children}
 
           <DialogFooter className="gap-2 pt-4">
             <Button

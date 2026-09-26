@@ -996,6 +996,16 @@ const enUS: Record<string, string> = {
     "The worktree starts from the current commit. Uncommitted changes stay in your current checkout.",
   "git.worktree.dialog.confirm": "Create worktree",
   "git.worktree.error.createFailed": "Couldn't create the worktree: {error}",
+  "git.worktree.setup.label": "Run setup command after creating",
+  "git.worktree.setup.hint":
+    "From worktree.setup in .zcode/config.json. It runs in a terminal in the new worktree.",
+  "git.worktree.setup.invalid":
+    "worktree.setup in .zcode/config.json is invalid, so no setup command will run.",
+  "git.worktree.setup.tooLarge":
+    ".zcode/config.json is too large to read, so no setup command will run.",
+  "git.worktree.setup.unreadable":
+    "Couldn't read .zcode/config.json, so no setup command will run.",
+  "git.worktree.setup.terminalTitle": "Setup",
   "git.branchSwitcher.createAction": "Create and switch to new branch...",
   "git.branchSwitcher.createDialog.title": "Create and switch to a new branch",
   "git.branchSwitcher.createDialog.description":

@@ -58,14 +58,57 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   4. 成功后执行与“移除”相同的收尾（关闭标签、释放运行时、失效任务缓存），并提示分支已保留；失败以 toast 提示。
 - 文案 `workspaceSidebar.deleteWorktree` 与 `git.worktree.delete.*`，`en-US` 与 `zh-CN` 同步提供。
 
+## 创建后的 setup 命令
+
+- 配置：源 workspace 根目录 `.zcode/config.json` 的 `worktree.setup`（字符串）。规则与项目操作的 `command` 相同：
+  首尾空白去掉后 1–4000 字符，不含控制字符（C0 与 DEL，含换行）。由 `@zcode/shared` 的
+  `parseWorktreeSetupConfig` 解析；与 `actions` 相互独立，一方无效不影响另一方。
+
+  ```json
+  { "worktree": { "setup": "pnpm install" } }
+  ```
+
+- 读取：对话框每次打开时读取一次源 workspace 的配置，与项目操作菜单共用同一读取函数（直接 `readTextFile`，
+  最多 256 KB，文件不存在视为未配置，不缓存）。读取的是源 workspace 当前的文件，因此对话框里展示的就是将要执行
+  的命令，即使新 worktree 检出的 HEAD 版本不同。
+- 对话框：已配置时显示复选框“创建后运行 setup 命令”（默认勾选）与**完整**命令（等宽、自动换行、不截断）；
+  配置无效、过大或无法读取时显示提示，不提供运行；未配置时不显示。创建进行中复选框禁用。
+- 运行：创建成功且勾选时，在转移草稿与切换 workspace **之前**，把 `{ name: 本地化的“Setup”, command }` 登记到
+  内存中的一次性表 `pendingWorkspaceSetup`（按新 workspace 的身份 key；本地 worktree 即其路径）。
+  `useAppPanels` 在当前 workspace 身份 key 变化后取出（取出即删除），交给项目操作的 `handleRunProjectAction`：
+  在新 workspace 的右侧面板新建终端标签（cwd 为新 workspace 路径），首条输入执行该命令。
+  命令不进入标签状态，刷新或恢复不会重复执行。
+- setup 命令的成败不影响 worktree 与草稿：输出留在终端，用户可以中断、重跑或关闭。
+
+```mermaid
+sequenceDiagram
+  participant D as worktree 对话框
+  participant G as IGitService
+  participant P as pendingWorkspaceSetup
+  participant L as WorkspaceShellLayout
+  participant A as useAppPanels
+  participant T as TerminalSession
+  D->>G: createWorktree
+  G-->>D: ok（新 workspacePath）
+  D->>P: set(新 key, command)（仅勾选时）
+  D->>L: onCreated
+  L->>L: 转移草稿 → handleStartDraftInWorkspace
+  A->>P: take(当前 key)（key 变化后的 effect）
+  A->>T: 新终端标签 + pendingTerminalCommands
+  T->>T: PTY 创建后写入 command + "\r"
+```
+
 ## 不在本期
 
-- 在 worktree 与本地检出之间移交改动、创建后自动运行 setup 脚本（可接入项目操作）、远程 workspace。
+- 在 worktree 与本地检出之间移交改动、远程 workspace。
 
 ## 验收
 
 - `packages/services/test/gitWorktree.test.ts`（真实临时仓库）：删除只对 ZCode 创建的 worktree 生效、未提交改动需 `force`、
   删除后目录消失且分支保留；创建成功且检出新分支、子目录 workspace 映射、
   重名目录追加后缀、已存在分支与非法分支名返回 issue 且不创建目录、未提交改动不带入。
+- `packages/ui/test/projectActions.test.ts`：`worktree.setup` 解析（缺失、有效、非字符串、控制字符、与 `actions`
+  互不影响）与 `pendingWorkspaceSetup` 一次性语义。
 - Web 开发服务 + Playwright：在草稿分支菜单中选择“在新 worktree 中开始…”，输入分支名后打开新 workspace，
-  草稿文本随之转移，`git worktree list` 显示新条目。
+  草稿文本随之转移，`git worktree list` 显示新条目；配置 `worktree.setup` 时对话框显示完整命令，勾选创建后
+  新 workspace 的右侧面板出现 Setup 终端并执行命令，取消勾选则不运行。

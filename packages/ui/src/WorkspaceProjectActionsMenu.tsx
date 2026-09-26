@@ -15,13 +15,9 @@ import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getErrorMessage } from "@/lib/errorMessage.js";
-import { isMissingFileError } from "@/lib/missingFileError.js";
-import { joinFilePath } from "@/lib/path.js";
+import { readWorkspaceConfigFile } from "@/lib/workspaceConfigFile.js";
 import { logger } from "@/logger.js";
 import { WINDOWS_CAPTION_CONTROL_CLASS } from "@/windowCaptionControls.js";
-
-/** 与文件服务单次读取上限一致；配置更大时明确提示，而不是截断后报 JSON 无效。 */
-const PROJECT_ACTIONS_READ_BYTES = 256 * 1024;
 
 type ActionsState =
   | { status: "loading" }
@@ -64,21 +60,13 @@ export function WorkspaceProjectActionsMenu({
   const loadActions = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setState({ status: "loading" });
-    const configPath = joinFilePath(joinFilePath(workspaceAbsPath, ".zcode"), "config.json");
     let next: ActionsState;
     try {
-      // 直接读取而不走 checkFilesExist：后者为聊天路径提及做了一分钟正负结果缓存，
-      // 用户刚创建或删除配置时会读到过期结论。文件不存在视为没有操作。
-      const slice = await fileService
-        .readTextFile({ path: configPath, length: PROJECT_ACTIONS_READ_BYTES })
-        .catch((error: unknown) => {
-          if (isMissingFileError(error)) return null;
-          throw error;
-        });
-      // 修复原因：默认只读 128KB 且忽略 truncated，合规但较大的配置会被截断后误报为无效 JSON。
-      next = slice?.truncated
-        ? { status: "ready", config: { actions: [], error: "too-large" } }
-        : { status: "ready", config: parseProjectActionsConfig(slice ? slice.content : null) };
+      const file = await readWorkspaceConfigFile(fileService, workspaceAbsPath);
+      next =
+        file.status === "too-large"
+          ? { status: "ready", config: { actions: [], error: "too-large" } }
+          : { status: "ready", config: parseProjectActionsConfig(file.content) };
     } catch (error) {
       logger.warn("[ProjectActions] 读取 .zcode/config.json 失败", {
         error: getErrorMessage(error),

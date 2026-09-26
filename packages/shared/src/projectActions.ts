@@ -1,6 +1,6 @@
 /**
- * 项目操作：`<workspace>/.zcode/config.json` 顶层 `actions` 的解析（纯函数）。
- * 规范：docs/specs/project-actions.md
+ * `<workspace>/.zcode/config.json` 中 UI 使用的字段解析（纯函数）：
+ * 顶层 `actions`（规范：docs/specs/project-actions.md）与 `worktree.setup`（规范：docs/specs/git-worktree-task.md）。
  */
 import { z } from "zod";
 
@@ -30,28 +30,41 @@ function hasNoControlCharacters(value: string): boolean {
   return true;
 }
 
+const commandSchema = z.string().trim().min(1).max(4000).refine(hasNoControlCharacters);
+
 const projectActionSchema = z.object({
   name: z.string().trim().min(1).max(80).refine(hasNoControlCharacters),
-  command: z.string().trim().min(1).max(4000).refine(hasNoControlCharacters),
+  command: commandSchema,
 });
 
 const projectActionsSchema = z.array(projectActionSchema).max(PROJECT_ACTIONS_MAX_COUNT);
 
-/** 文件内容为 null 表示文件不存在；其余字段（hooks、plugins 等）一律忽略。 */
-export function parseProjectActionsConfig(content: string | null): ProjectActionsConfig {
+/** 解析顶层 JSON 对象；空内容为 null，非对象为 "invalid-json"。 */
+function parseConfigObject(
+  content: string | null,
+): Record<string, unknown> | null | "invalid-json" {
   if (content === null || content.trim() === "") {
-    return { actions: [] };
+    return null;
   }
   let value: unknown;
   try {
     value = JSON.parse(content);
   } catch {
-    return { actions: [], error: "invalid-json" };
+    return "invalid-json";
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return "invalid-json";
+  }
+  return value as Record<string, unknown>;
+}
+
+/** 文件内容为 null 表示文件不存在；其余字段（hooks、plugins 等）一律忽略。 */
+export function parseProjectActionsConfig(content: string | null): ProjectActionsConfig {
+  const config = parseConfigObject(content);
+  if (config === "invalid-json") {
     return { actions: [], error: "invalid-json" };
   }
-  const rawActions = (value as { actions?: unknown }).actions;
+  const rawActions = config?.actions;
   if (rawActions === undefined) {
     return { actions: [] };
   }
@@ -66,4 +79,33 @@ export function parseProjectActionsConfig(content: string | null): ProjectAction
       command: action.command,
     })),
   };
+}
+
+export type WorktreeSetupConfigError = "invalid-json" | "invalid-setup" | "too-large";
+
+export interface WorktreeSetupConfig {
+  /** 未配置时为 null。 */
+  command: string | null;
+  error?: WorktreeSetupConfigError;
+}
+
+/** 新建 worktree 后的 setup 命令：`worktree.setup`，规则与项目操作的 command 相同。 */
+export function parseWorktreeSetupConfig(content: string | null): WorktreeSetupConfig {
+  const config = parseConfigObject(content);
+  if (config === "invalid-json") {
+    return { command: null, error: "invalid-json" };
+  }
+  const worktree = config?.worktree;
+  if (worktree === undefined) {
+    return { command: null };
+  }
+  if (typeof worktree !== "object" || worktree === null || Array.isArray(worktree)) {
+    return { command: null, error: "invalid-setup" };
+  }
+  const rawSetup = (worktree as { setup?: unknown }).setup;
+  if (rawSetup === undefined) {
+    return { command: null };
+  }
+  const parsed = commandSchema.safeParse(rawSetup);
+  return parsed.success ? { command: parsed.data } : { command: null, error: "invalid-setup" };
 }
