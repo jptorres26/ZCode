@@ -1523,6 +1523,8 @@ const enUS: Record<string, string> = {
   // Terminal
   "terminal.exited": "[Process exited]",
   "projectActions.trigger": "Run action",
+  "projectActions.tooLarge":
+    ".zcode/config.json is larger than 256 KB, so its actions weren't loaded.",
   "projectActions.title": "Project actions",
   "projectActions.loading": "Loading actions…",
   "projectActions.empty":

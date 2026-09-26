@@ -584,20 +584,20 @@ export function TerminalSession({
             requestFocus();
           }
 
-          // 项目操作的一次性首条输入：等 shell 的第一段输出（提示符/启动信息）再写入，
-          // 避免部分 shell 在初始化时丢弃预输入。规范：docs/specs/project-actions.md
-          let pendingCommand = takePendingTerminalCommand(persistentKey);
           // data 订阅 → term.write（进 registry，detached 时仍累积 scrollback）
           registryDisposers.push(
             services.terminalService.onDynamicData(id)((data) => {
               term.write(normalizePowerShellReadlineRedraw(data, shell));
-              if (pendingCommand !== undefined) {
-                const command = pendingCommand;
-                pendingCommand = undefined;
-                void services.terminalService.write({ id, data: `${command}\r` });
-              }
             }),
           );
+          // 项目操作的一次性首条输入。规范：docs/specs/project-actions.md
+          // 修复原因：之前等第一段输出再写入，但宿主不缓冲订阅前的输出；远程延迟下提示符可能早于订阅发出，
+          // 命令会等到用户第一次按键的回显才写入，拼成错误命令（Windows ConPTY 的首段输出也不是提示符）。
+          // 修复依据：与 VS Code sendText 一致，PTY 创建完成即写入，由 TTY 缓冲到 shell 读取，不依赖输出时序。
+          const pendingCommand = takePendingTerminalCommand(persistentKey);
+          if (pendingCommand !== undefined) {
+            void services.terminalService.write({ id, data: `${pendingCommand}\r` });
+          }
           // exit 订阅（进 registry，与原路径对称：有 onExit 则回调，否则写退出提示）
           registryDisposers.push(
             services.terminalService.onDynamicExit(id)((exitCode) => {
