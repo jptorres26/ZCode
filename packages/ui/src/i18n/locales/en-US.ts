@@ -978,6 +978,16 @@ const enUS: Record<string, string> = {
   "git.branchSwitcher.section.branches": "Branches",
   "git.branchSwitcher.empty": "No matching branches",
   "git.branchSwitcher.currentDirty": "Uncommitted changes: {count} files",
+  "git.worktree.delete.confirmTitle": "Delete this worktree?",
+  "git.worktree.delete.confirmDescription":
+    "The folder {path} will be deleted and the project removed from the sidebar. The branch {branchName} and its commits are kept.",
+  "git.worktree.delete.confirm": "Delete worktree",
+  "git.worktree.delete.dirtyTitle": "This worktree has uncommitted changes",
+  "git.worktree.delete.dirtyDescription":
+    "Deleting it will discard those changes permanently. Delete it anyway?",
+  "git.worktree.delete.forceConfirm": "Delete anyway",
+  "git.worktree.delete.done": "Worktree deleted. The branch {branchName} is kept.",
+  "git.worktree.delete.failed": "Couldn't delete the worktree: {error}",
   "git.worktree.createAction": "Start in new worktree...",
   "git.worktree.dialog.title": "Start in a new worktree",
   "git.worktree.dialog.description":
@@ -1348,6 +1358,7 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.searchTasksPlaceholder": "Search tasks...",
   "workspaceSidebar.searchArchivedTasksPlaceholder": "Search archived tasks...",
   "workspaceSidebar.closeTaskSearch": "Close task search",
+  "workspaceSidebar.deleteWorktree": "Delete worktree",
   "workspaceSidebar.remove": "Remove",
   "workspaceSidebar.removeRunningWorkspace.title": "Remove a running project?",
   "workspaceSidebar.removeRunningWorkspace.description":

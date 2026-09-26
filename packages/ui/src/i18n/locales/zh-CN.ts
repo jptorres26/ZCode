@@ -908,6 +908,15 @@ const zhCN: Record<string, string> = {
   "git.branchSwitcher.section.branches": "分支",
   "git.branchSwitcher.empty": "未找到匹配分支",
   "git.branchSwitcher.currentDirty": "未提交的更改：{count} 个文件",
+  "git.worktree.delete.confirmTitle": "删除这个 worktree？",
+  "git.worktree.delete.confirmDescription":
+    "将删除文件夹 {path}，并从侧栏移除该项目。分支 {branchName} 及其提交会保留。",
+  "git.worktree.delete.confirm": "删除 worktree",
+  "git.worktree.delete.dirtyTitle": "这个 worktree 有未提交的改动",
+  "git.worktree.delete.dirtyDescription": "删除后这些改动将永久丢失。仍要删除吗？",
+  "git.worktree.delete.forceConfirm": "仍然删除",
+  "git.worktree.delete.done": "已删除 worktree，分支 {branchName} 已保留。",
+  "git.worktree.delete.failed": "无法删除 worktree：{error}",
   "git.worktree.createAction": "在新 worktree 中开始...",
   "git.worktree.dialog.title": "在新 worktree 中开始",
   "git.worktree.dialog.description":
@@ -1259,6 +1268,7 @@ const zhCN: Record<string, string> = {
   "workspaceSidebar.searchTasksPlaceholder": "搜索任务...",
   "workspaceSidebar.searchArchivedTasksPlaceholder": "搜索归档任务...",
   "workspaceSidebar.closeTaskSearch": "关闭任务搜索",
+  "workspaceSidebar.deleteWorktree": "删除 worktree",
   "workspaceSidebar.remove": "移除",
   "workspaceSidebar.removeRunningWorkspace.title": "移除运行中的项目？",
   "workspaceSidebar.removeRunningWorkspace.description":

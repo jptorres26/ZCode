@@ -209,6 +209,22 @@ export type GitCreateWorktreeResult =
     }
   | { ok: false; branchName: string | null; issues: GitBranchMutationIssue[] };
 
+/** ZCode 创建的链接 worktree。规范：docs/specs/git-worktree-task.md（删除 worktree） */
+export interface GitManagedWorktree {
+  worktreePath: string;
+  mainWorktreePath: string;
+  branchName: string | null;
+}
+
+export interface GitRemoveWorktreeRequest extends GitRepositoryRequest {
+  /** 有未提交改动时仍然删除。 */
+  force?: boolean;
+}
+
+export type GitRemoveWorktreeResult =
+  | { ok: true; mainWorktreePath: string; branchName: string | null }
+  | { ok: false; reason: "not-managed" | "dirty" | "failed"; detail?: string };
+
 export interface GitPathMutationRequest extends GitRepositoryRequest {
   paths: string[];
 }

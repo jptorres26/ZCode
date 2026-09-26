@@ -40,13 +40,32 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   显示第一条 issue。创建进行中不能关闭对话框；宿主组件卸载后返回的结果被忽略，不会再转移草稿或切换 workspace。
 - 文案 `git.worktree.*`，`en-US` 与 `zh-CN` 同步提供。
 
+## 删除 worktree
+
+- 只允许删除 **ZCode 创建的** worktree：workspace 所在检出是链接 worktree（不是主检出），且其根目录位于
+  `<ZCode 数据目录>/worktrees/` 下。用户自己创建的仓库或 worktree 不提供删除入口。
+- `IGitService.getManagedWorktree({ workspacePath })`：满足上述条件时返回
+  `{ worktreePath, mainWorktreePath, branchName }`，否则 `null`（主检出与分支名取自 `git worktree list --porcelain`）。
+- `IGitService.removeWorktree({ workspacePath, force? })`：
+  - 不满足条件 → `{ ok: false, reason: "not-managed" }`；
+  - 未指定 `force` 且 worktree 有未提交改动（含未跟踪文件）→ `{ ok: false, reason: "dirty" }`，不删除；
+  - 在主检出中执行 `git worktree remove [--force] <worktreePath>`；失败 → `{ ok: false, reason: "failed", detail }`；
+  - 成功 → `{ ok: true, mainWorktreePath, branchName }`。**分支与其提交保留**，只删除目录与 worktree 登记。
+- 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
+  1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
+  2. 破坏性确认：说明将删除的目录、保留的分支；
+  3. 调用 `removeWorktree`；返回 `dirty` 时再次确认“未提交的改动将永久丢失”，确认后以 `force` 重试；
+  4. 成功后执行与“移除”相同的收尾（关闭标签、释放运行时、失效任务缓存），并提示分支已保留；失败以 toast 提示。
+- 文案 `workspaceSidebar.deleteWorktree` 与 `git.worktree.delete.*`，`en-US` 与 `zh-CN` 同步提供。
+
 ## 不在本期
 
-- 删除 / 清理 worktree、在 worktree 与本地检出之间移交改动、创建后自动运行 setup 脚本（可接入项目操作）。
+- 在 worktree 与本地检出之间移交改动、创建后自动运行 setup 脚本（可接入项目操作）、远程 workspace。
 
 ## 验收
 
-- `packages/services/test/gitWorktree.test.ts`（真实临时仓库）：创建成功且检出新分支、子目录 workspace 映射、
+- `packages/services/test/gitWorktree.test.ts`（真实临时仓库）：删除只对 ZCode 创建的 worktree 生效、未提交改动需 `force`、
+  删除后目录消失且分支保留；创建成功且检出新分支、子目录 workspace 映射、
   重名目录追加后缀、已存在分支与非法分支名返回 issue 且不创建目录、未提交改动不带入。
 - Web 开发服务 + Playwright：在草稿分支菜单中选择“在新 worktree 中开始…”，输入分支名后打开新 workspace，
   草稿文本随之转移，`git worktree list` 显示新条目。

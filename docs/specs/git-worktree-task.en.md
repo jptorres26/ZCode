@@ -52,14 +52,43 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
   the draft or switches workspace late.
 - Strings live under `git.worktree.*`, in both `en-US` and `zh-CN`.
 
+## Deleting a worktree
+
+- Only worktrees **created by ZCode** can be deleted: the workspace's checkout is a linked worktree (not
+  the main checkout) and its root is under `<ZCode data dir>/worktrees/`. Repositories or worktrees the
+  user created themselves get no delete entry.
+- `IGitService.getManagedWorktree({ workspacePath })` returns `{ worktreePath, mainWorktreePath,
+branchName }` when those conditions hold, otherwise `null` (the main checkout and branch come from
+  `git worktree list --porcelain`).
+- `IGitService.removeWorktree({ workspacePath, force? })`:
+  - Conditions not met → `{ ok: false, reason: "not-managed" }`.
+  - Without `force`, a worktree with uncommitted changes (including untracked files) →
+    `{ ok: false, reason: "dirty" }`, and nothing is deleted.
+  - Runs `git worktree remove [--force] <worktreePath>` in the main checkout; failure →
+    `{ ok: false, reason: "failed", detail }`.
+  - Success → `{ ok: true, mainWorktreePath, branchName }`. **The branch and its commits are kept**;
+    only the folder and the worktree registration are removed.
+- Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
+  `getManagedWorktree` returns a value (queried when the menu opens).
+  1. If the workspace has a running conversation, the existing "Remove" confirmation for running
+     workspaces comes first.
+  2. A destructive confirmation names the folder that will be deleted and the branch that is kept.
+  3. It calls `removeWorktree`. On `dirty`, a second confirmation says uncommitted changes will be lost
+     for good, and confirming retries with `force`.
+  4. On success it does the same cleanup as "Remove" (close the tab, release the runtime, invalidate
+     the task cache) and says the branch was kept. Failures show a toast.
+- Strings: `workspaceSidebar.deleteWorktree` and `git.worktree.delete.*`, in both `en-US` and `zh-CN`.
+
 ## Out of scope for now
 
-- Removing or cleaning up worktrees, handing changes off between a worktree and the local checkout,
-  and running a setup script after creation (which could plug into project actions).
+- Handing changes off between a worktree and the local checkout, running a setup script after
+  creation (which could plug into project actions), and remote workspaces.
 
 ## Acceptance
 
-- `packages/services/test/gitWorktree.test.ts` (real temporary repository): creation succeeds and
+- `packages/services/test/gitWorktree.test.ts` (real temporary repository): deletion only works for
+  ZCode-created worktrees, uncommitted changes need `force`, and after deletion the folder is gone while
+  the branch is kept; creation succeeds and
   checks out the new branch; subdirectory workspace mapping; a suffix when the directory exists; an
   existing branch and an invalid branch name return issues without creating a directory; uncommitted
   changes are not carried over.

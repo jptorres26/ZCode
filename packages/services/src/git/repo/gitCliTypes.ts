@@ -8,6 +8,8 @@ import type {
   GitLocalBranchListResult,
   GitPullRequestLink,
   GitCreateWorktreeResult,
+  GitManagedWorktree,
+  GitRemoveWorktreeResult,
   GitPushResult,
   GitRepositorySummary,
   GitWorkspaceRepositoryInfo,
@@ -102,6 +104,8 @@ export interface GitCliRepo {
   push(workspacePath: string): Promise<GitPushResult>;
   getPullRequestLink(workspacePath: string): Promise<GitPullRequestLink | null>;
   createWorktree(workspacePath: string, branchName: string): Promise<GitCreateWorktreeResult>;
+  getManagedWorktree(workspacePath: string): Promise<GitManagedWorktree | null>;
+  removeWorktree(workspacePath: string, force: boolean): Promise<GitRemoveWorktreeResult>;
   getIdentity(workspacePath: string): Promise<GitIdentity>;
 }
 

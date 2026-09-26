@@ -60,7 +60,7 @@ import {
 } from "./gitCliTypes.js";
 import { discardGitPaths, readStagedRenameOrigins, unstageGitPaths } from "./gitPathMutations.js";
 import { readGitPullRequestLink } from "./gitPullRequestLinkReader.js";
-import { addGitWorktree } from "./gitWorktree.js";
+import { addGitWorktree, readManagedWorktree, removeManagedWorktree } from "./gitWorktree.js";
 import { getZCodeDataRootDir } from "../../paths.js";
 
 export type {
@@ -546,6 +546,9 @@ export function createGitCliRepo(options?: {
   worktreesRootDir?: string;
 }): GitCliRepo {
   const commandProvider = options?.commandProvider ?? createGitCommandProvider();
+  // 数据目录可能在运行时被设置（setDataBaseDir），因此每次使用时再解析。
+  const resolveWorktreesRootDir = () =>
+    options?.worktreesRootDir ?? join(getZCodeDataRootDir(), "worktrees");
   const repositoryResolutionRequests = new Map<string, Promise<GitResolvedRepository>>();
   const workspaceRepositoryInfoRequests = new Map<string, Promise<GitWorkspaceRepositoryInfo>>();
   const statusRequests = new Map<string, Promise<GitStatusSnapshot>>();
@@ -1718,8 +1721,29 @@ export function createGitCliRepo(options?: {
         repoRoot: resolution.repoRoot,
         workspaceInRepoPath: resolution.workspaceInRepoPath,
         branchName: normalizedBranchName,
-        worktreesRootDir: options?.worktreesRootDir ?? join(getZCodeDataRootDir(), "worktrees"),
+        worktreesRootDir: resolveWorktreesRootDir(),
       });
+      if (result.ok) {
+        invalidate(workspacePath);
+      }
+      return result;
+    },
+
+    async getManagedWorktree(workspacePath: string) {
+      const resolution = await this.resolveRepository(workspacePath);
+      if (!resolution.isGitAvailable || !resolution.isRepository) {
+        return null;
+      }
+      return await readManagedWorktree({
+        commandProvider,
+        worktreeRoot: resolution.repoRoot,
+        worktreesRootDir: resolveWorktreesRootDir(),
+      });
+    },
+
+    async removeWorktree(workspacePath: string, force: boolean) {
+      const worktree = await this.getManagedWorktree(workspacePath);
+      const result = await removeManagedWorktree({ commandProvider, worktree, force });
       if (result.ok) {
         invalidate(workspacePath);
       }

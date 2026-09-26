@@ -2,9 +2,13 @@
  * 在仓库外创建新 worktree 并检出新分支。规范：docs/specs/git-worktree-task.md
  */
 import { createHash } from "node:crypto";
-import { mkdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
-import type { GitCreateWorktreeResult } from "@zcode/shared";
+import { mkdir, realpath, stat } from "node:fs/promises";
+import { basename, isAbsolute, join, relative } from "node:path";
+import type {
+  GitCreateWorktreeResult,
+  GitManagedWorktree,
+  GitRemoveWorktreeResult,
+} from "@zcode/shared";
 import { DEFAULT_GIT_COMMAND_TIMEOUT_MS, DEFAULT_GIT_OUTPUT_BYTES } from "../config.js";
 import type { GitCommandProvider } from "../providers/gitCommandProvider.js";
 import { parseGitBranchMutationIssues } from "./gitCliHelpers.js";
@@ -91,4 +95,110 @@ export async function addGitWorktree(context: {
     ? mappedWorkspacePath
     : worktreePath;
   return { ok: true, branchName, worktreePath, workspacePath };
+}
+
+interface WorktreeListEntry {
+  path: string;
+  branchName: string | null;
+}
+
+function parseWorktreeList(stdout: string): WorktreeListEntry[] {
+  const entries: WorktreeListEntry[] = [];
+  for (const block of stdout.replace(/\r\n/g, "\n").split("\n\n")) {
+    let path: string | null = null;
+    let branchName: string | null = null;
+    for (const line of block.split("\n")) {
+      if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
+      else if (line.startsWith("branch ")) {
+        branchName = line.slice("branch ".length).replace(/^refs\/heads\//, "");
+      }
+    }
+    if (path) entries.push({ path, branchName });
+  }
+  return entries;
+}
+
+async function realpathOrSelf(path: string): Promise<string> {
+  return await realpath(path).catch(() => path);
+}
+
+function isInsideDir(child: string, parent: string): boolean {
+  const relativePath = relative(parent, child);
+  return relativePath.length > 0 && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+}
+
+/**
+ * 只有 ZCode 创建的链接 worktree（位于 worktreesRootDir 下，且不是主检出）才返回信息；
+ * 用户自己创建的仓库或 worktree 返回 null，不提供删除。规范：docs/specs/git-worktree-task.md
+ */
+export async function readManagedWorktree(context: {
+  commandProvider: GitCommandProvider;
+  worktreeRoot: string;
+  worktreesRootDir: string;
+}): Promise<GitManagedWorktree | null> {
+  const [worktreeRoot, worktreesRootDir] = await Promise.all([
+    realpathOrSelf(context.worktreeRoot),
+    realpathOrSelf(context.worktreesRootDir),
+  ]);
+  if (!isInsideDir(worktreeRoot, worktreesRootDir)) {
+    return null;
+  }
+  const result = await context.commandProvider.run({
+    cwd: worktreeRoot,
+    args: ["worktree", "list", "--porcelain"],
+    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+    maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+  });
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const entries = parseWorktreeList(result.stdout);
+  const main = entries[0];
+  const resolvedEntries = await Promise.all(
+    entries.map(async (entry) => ({ ...entry, resolved: await realpathOrSelf(entry.path) })),
+  );
+  const current = resolvedEntries.find((entry) => entry.resolved === worktreeRoot);
+  if (!main || !current || current.path === main.path) {
+    return null;
+  }
+  return {
+    worktreePath: current.path,
+    mainWorktreePath: main.path,
+    branchName: current.branchName,
+  };
+}
+
+export async function removeManagedWorktree(context: {
+  commandProvider: GitCommandProvider;
+  worktree: GitManagedWorktree | null;
+  force: boolean;
+}): Promise<GitRemoveWorktreeResult> {
+  const { worktree } = context;
+  if (!worktree) {
+    return { ok: false, reason: "not-managed" };
+  }
+  if (!context.force) {
+    const status = await context.commandProvider.run({
+      cwd: worktree.worktreePath,
+      args: ["status", "--porcelain", "--untracked-files=normal"],
+      timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+      maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+    });
+    if (status.exitCode !== 0 || status.stdout.trim().length > 0) {
+      return { ok: false, reason: "dirty" };
+    }
+  }
+  // 在主检出中执行，避免在待删除目录内运行；路径为 git 自身给出的绝对路径，不会被当成选项。
+  const result = await context.commandProvider.run({
+    cwd: worktree.mainWorktreePath,
+    args: context.force
+      ? ["worktree", "remove", "--force", worktree.worktreePath]
+      : ["worktree", "remove", worktree.worktreePath],
+    timeoutMs: GIT_WORKTREE_ADD_TIMEOUT_MS,
+    maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+  });
+  if (result.exitCode !== 0 || result.timedOut) {
+    return { ok: false, reason: "failed", detail: result.stderr.trim() || result.stdout.trim() };
+  }
+  return { ok: true, mainWorktreePath: worktree.mainWorktreePath, branchName: worktree.branchName };
 }

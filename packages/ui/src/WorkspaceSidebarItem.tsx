@@ -22,6 +22,7 @@ import {
   LoaderCircle,
   RefreshCwIcon,
   MessageCirclePlus,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
 import type { useSortable } from "@dnd-kit/sortable";
@@ -88,6 +89,7 @@ import {
   scanWindowsReservedDeviceNameFiles,
 } from "@/lib/workspaceRemovalSafety.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
+import { useManagedWorktreeDeletion } from "@/hooks/useManagedWorktreeDeletion.js";
 import { toast } from "@/components/ui/toast.js";
 
 export type SortableBindings = Pick<ReturnType<typeof useSortable>, "attributes" | "listeners">;
@@ -346,13 +348,10 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     [onStartDraftInWorkspace, readOnlyReason, tab.workspaceIdentity, tab.workspacePath],
   );
 
-  const handleRemoveWorkspace = useCallback(async () => {
-    const workspaceKey = tab.workspaceIdentity?.trim() || tab.workspacePath;
-    logger.debug("[WorkspaceSidebarItem] 移除 workspace", {
-      isExpanded,
-      workspaceKey,
-    });
-
+  const workspaceKeyForLog = tab.workspaceIdentity?.trim() || tab.workspacePath;
+  // “移除”与“删除 worktree”共用：运行中对话的确认、以及关闭入口后的收尾。
+  const confirmRemovingRunningWorkspace = useCallback(async (): Promise<boolean> => {
+    const workspaceKey = workspaceKeyForLog;
     if (
       hasRunningWorkspaceChat({
         workspaceState: workspaceZCodeStateRef.current,
@@ -370,10 +369,14 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
       });
       if (!confirmed) {
         logger.debug("[WorkspaceSidebarItem] 用户取消移除运行中 workspace", { workspaceKey });
-        return;
+        return false;
       }
     }
+    return true;
+  }, [confirmDialog, intl, workspaceKeyForLog]);
 
+  const releaseWorkspaceEntry = useCallback(() => {
+    const workspaceKey = workspaceKeyForLog;
     closeTab(tab.id);
     releaseWorkspaceRuntimeAfterProjectRemoval({
       tab: {
@@ -417,15 +420,34 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   }, [
     baseServices.fileService,
     closeTab,
-    confirmDialog,
     intl,
-    isExpanded,
     isRemoteWorkspace,
     tab.id,
     tab.workspaceIdentity,
     tab.workspacePath,
+    workspaceKeyForLog,
     zcodeTaskService,
   ]);
+
+  const handleRemoveWorkspace = useCallback(async () => {
+    logger.debug("[WorkspaceSidebarItem] 移除 workspace", {
+      isExpanded,
+      workspaceKey: workspaceKeyForLog,
+    });
+    if (!(await confirmRemovingRunningWorkspace())) {
+      return;
+    }
+    releaseWorkspaceEntry();
+  }, [confirmRemovingRunningWorkspace, isExpanded, releaseWorkspaceEntry, workspaceKeyForLog]);
+
+  // 删除 ZCode 创建的 worktree。规范：docs/specs/git-worktree-task.md
+  const { managedWorktree, deleteWorktree } = useManagedWorktreeDeletion({
+    gitService: baseServices.gitService,
+    workspacePath: tab.workspacePath,
+    enabled: workspaceActionMenuOpen && !isRemoteWorkspace,
+    confirmRemovingRunningWorkspace,
+    releaseWorkspaceEntry,
+  });
 
   const handleReconnectRemoteWorkspace = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -946,6 +968,21 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
                               id: "workspaceSidebar.remove",
                             })}
                           </DropdownMenuItem>
+                          {managedWorktree ? (
+                            <DropdownMenuItem
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                void deleteWorktree();
+                              }}
+                            >
+                              <Trash2Icon className="h-3.5 w-3.5" />
+                              {intl.formatMessage({ id: "workspaceSidebar.deleteWorktree" })}
+                            </DropdownMenuItem>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     ) : null}

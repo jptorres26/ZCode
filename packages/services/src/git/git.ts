@@ -19,6 +19,9 @@ import type {
   GitPullRequestLink,
   GitCreateWorktreeRequest,
   GitCreateWorktreeResult,
+  GitManagedWorktree,
+  GitRemoveWorktreeRequest,
+  GitRemoveWorktreeResult,
   GitPushRequest,
   GitPushResult,
   GitRefreshRequest,
@@ -55,6 +58,10 @@ export interface IGitService {
   getPullRequestLink(params: GitRepositoryRequest): Promise<GitPullRequestLink | null>;
   /** 在仓库外新建 worktree 并检出新分支。规范：docs/specs/git-worktree-task.md */
   createWorktree(params: GitCreateWorktreeRequest): Promise<GitCreateWorktreeResult>;
+  /** ZCode 创建的链接 worktree 信息；其它检出返回 null。 */
+  getManagedWorktree(params: GitRepositoryRequest): Promise<GitManagedWorktree | null>;
+  /** 删除 ZCode 创建的 worktree（保留分支）。 */
+  removeWorktree(params: GitRemoveWorktreeRequest): Promise<GitRemoveWorktreeResult>;
   getIdentity(params: GitRepositoryRequest): Promise<GitIdentity>;
   refresh(params: GitRefreshRequest): Promise<GitRefreshResult>;
 }
