@@ -154,6 +154,10 @@ async function openVSCodeRemoteSshFolder(
       if (process.platform === "win32") {
         return openWindowsEditor(editorId, appPath, args, error);
       }
+      if (process.platform !== "darwin") {
+        // `open -a` 只存在于 macOS；Linux 上它是 openvt 或不存在，回退会执行无关程序并掩盖 VS Code 的真实错误。
+        return { success: false, error: stringifyError(error) };
+      }
 
       try {
         await execFileAsync("open", ["-a", appPath, "--args", ...args]);
@@ -211,6 +215,10 @@ async function openVSCodeRemoteWslFolder(
     } catch (error) {
       if (process.platform === "win32") {
         return openWindowsEditor(editorId, appPath, args, error);
+      }
+      if (process.platform !== "darwin") {
+        // `open -a` 只存在于 macOS；Linux 上它是 openvt 或不存在，回退会执行无关程序并掩盖 VS Code 的真实错误。
+        return { success: false, error: stringifyError(error) };
       }
 
       try {
