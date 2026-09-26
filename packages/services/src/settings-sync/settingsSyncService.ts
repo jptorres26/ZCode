@@ -2185,13 +2185,17 @@ async function importPluginsForAgent(
     }
     try {
       // 先确认目标配置可读再复制插件目录，避免配置损坏时留下未登记的孤立插件副本。
+      // 修复原因：写入位置越界（工作区配置链接到工作区外）只在最后写配置时才被拒绝，此前插件目录已复制进工作区，
+      // 留下未登记的副本，复制模式下还会把用户私有插件内容放进克隆的仓库。修复依据：复制前先校验配置写入位置。
+      const configWriteOptions = configWriteOptionsForScope(selectedTargetScope, workspacePath);
       await readJsonFileOrEmpty(selectedConfigPath);
+      await resolveConfigWriteTarget(selectedConfigPath, configWriteOptions);
       await mkdir(dirname(targetCandidate.targetPath), { recursive: true });
       await importPluginDirectory(candidate.sourcePath, targetCandidate.targetPath, importMode);
       await addPluginDirToConfig(
         selectedConfigPath,
         targetCandidate.targetPath,
-        configWriteOptionsForScope(selectedTargetScope, workspacePath),
+        configWriteOptions,
       );
       importedCount += 1;
       const existingPluginIds = existingPluginIdsByConfigPath.get(selectedConfigPath);

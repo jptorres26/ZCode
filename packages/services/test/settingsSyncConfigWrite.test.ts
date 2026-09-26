@@ -169,6 +169,38 @@ test("a workspace config's symlink to an existing file outside the workspace is 
   });
 });
 
+test("a plugin import whose config target is outside the workspace copies nothing", async (t) => {
+  if (!isPosix) {
+    t.skip("symlink creation needs extra privileges on Windows");
+    return;
+  }
+  await withWorkspace(async (workspace) => {
+    const pluginDir = join(workspace, ".claude", "plugins", "my-plugin");
+    await mkdir(join(pluginDir, ".claude-plugin"), { recursive: true });
+    await writeFile(
+      join(pluginDir, ".claude-plugin", "plugin.json"),
+      JSON.stringify({ name: "my-plugin", version: "1.0.0" }),
+    );
+    await symlink("../../outside/config.json", join(workspace, ".zcode", "config.json"));
+
+    const result = await createService().importSelected({
+      workspacePath: workspace,
+      selections: [
+        {
+          agent: "claudeCode" as const,
+          category: "plugins" as const,
+          sourceScope: "project" as const,
+          targetScope: "project" as const,
+        },
+      ],
+    });
+
+    assert.equal(result.successCount, 0);
+    // 修复前：插件目录已复制进 .zcode/plugins，配置写入才被拒绝，留下未登记的副本
+    await assert.rejects(stat(join(workspace, ".zcode", "plugins", "my-plugin")));
+  });
+});
+
 test("MCP import fails the item on a symlink loop instead of replacing the link", async (t) => {
   if (!isPosix) {
     t.skip("symlink creation needs extra privileges on Windows");
