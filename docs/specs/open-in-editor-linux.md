@@ -28,6 +28,8 @@ Main 进程 `getInstalledEditors()` / `openInEditor()`。此前 `getEditorDefsFo
   - 终端：`terminal` → `x-terminal-emulator`、`gnome-terminal`、`konsole`、`xfce4-terminal`、
     `kitty`、`alacritty`、`wezterm`、`ghostty`（只展示一个“终端”）。
   - 文件管理器：`file-manager` → `xdg-open`（显示名“文件管理器 / Files”）。
+    UI 端 `isFileManagerOpenTarget` 与“打开方式”置顶顺序包含 `file-manager`，与 Finder / 资源管理器同等对待，
+    因此办公模式（只保留文件管理器目标）在 Linux 上也有该入口。
 - 图标：在 XDG `applications` 目录中找 `Exec` 首个参数与命令同名的 `.desktop` 条目，读取 `Icon`；
   绝对路径直接使用，主题名在 `hicolor` 各尺寸与 `pixmaps` 中查找 `png` / `svg`。找不到时使用内置的
   中性 SVG 图标（编辑器 / 终端 / 文件夹），保证入口不因缺图标被丢弃。

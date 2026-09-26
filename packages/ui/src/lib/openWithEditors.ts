@@ -1,6 +1,14 @@
 import type { EditorInfo } from "@zcode/shared";
 
-const PINNED_OPEN_WITH_EDITOR_IDS = ["finder", "qspace", "qspace-pro", "explorer"] as const;
+// 修复原因：Linux 的文件管理器目标 id 为 file-manager，不在列表中时办公模式会把它过滤掉，Linux 用户没有打开入口。
+// 修复依据：与 Finder / 资源管理器同等归类并置顶（docs/specs/open-in-editor-linux.md）。
+const PINNED_OPEN_WITH_EDITOR_IDS = [
+  "finder",
+  "qspace",
+  "qspace-pro",
+  "explorer",
+  "file-manager",
+] as const;
 
 export function isFileManagerOpenTarget(editor: EditorInfo): boolean {
   return (PINNED_OPEN_WITH_EDITOR_IDS as readonly string[]).includes(editor.id);
