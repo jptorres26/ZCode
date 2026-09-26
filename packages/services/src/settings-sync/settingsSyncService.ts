@@ -1138,16 +1138,16 @@ async function collectExistingMcpServerNameKeys(
   return nameKeys;
 }
 
-/** 写入工作区配置时传入工作区根：悬空符号链接只允许指向该目录内。 */
+/** 写入工作区配置时传入工作区根：配置经符号链接解析后的最终写入位置必须在该目录内。 */
 interface ConfigWriteOptions {
-  danglingLinkRoot?: string;
+  linkTargetRoot?: string;
 }
 
 function configWriteOptionsForScope(
   targetScope: SettingsSyncSourceScope,
   workspacePath: string | undefined,
 ): ConfigWriteOptions {
-  return targetScope === "global" || !workspacePath ? {} : { danglingLinkRoot: workspacePath };
+  return targetScope === "global" || !workspacePath ? {} : { linkTargetRoot: workspacePath };
 }
 
 async function addMcpServerToZcodeConfig(
@@ -1203,15 +1203,17 @@ const MAX_SYMLINK_HOPS = 40;
  * 修复原因：realpath 对悬空链接（目标尚未创建，常见于刚部署的 dotfiles）同样报 ENOENT，旧逻辑把它当作
  * “路径不存在”，rename 会覆盖链接本身，把可能含密钥的配置写到工作区而不是链接指向的位置。
  * 修复依据：lstat/readlink 逐级跟随到第一个非链接或不存在的路径；相对目标按链接所在目录的真实路径解析。
- * 工作区配置可能来自克隆的仓库：悬空链接的最终目标必须位于工作区内，否则拒绝写入（该项导入失败，链接保持不变），
- * 避免仓库借悬空链接把可能含密钥的配置写到任意位置。用户级配置（dotfiles）不受此限制。
+ * 工作区配置可能来自克隆的仓库：无论链接目标是否已存在，最终写入位置都必须位于工作区内，否则拒绝写入
+ * （该项导入失败，链接保持不变），避免仓库借链接把可能含密钥的配置写到任意位置，或覆盖工作区外已有的 JSON 文件。
+ * 用户级配置（dotfiles）不受此限制。
  */
 async function resolveConfigWriteTarget(
   filePath: string,
   options: ConfigWriteOptions = {},
 ): Promise<string> {
   try {
-    return await realpath(filePath);
+    // 修复原因：已存在目标直接返回 realpath 会绕过工作区边界检查，仓库可借链接覆盖工作区外任意可写的 JSON 文件。
+    return await ensureWriteTargetAllowed(await realpath(filePath), options);
   } catch (error) {
     if (!isFileNotFoundError(error)) throw error;
   }
@@ -1221,7 +1223,7 @@ async function resolveConfigWriteTarget(
     try {
       isLink = (await lstat(current)).isSymbolicLink();
     } catch (error) {
-      if (isFileNotFoundError(error)) return await ensureDanglingTargetAllowed(current, options);
+      if (isFileNotFoundError(error)) return await ensureWriteTargetAllowed(current, options);
       throw error;
     }
     if (!isLink) return current;
@@ -1232,15 +1234,13 @@ async function resolveConfigWriteTarget(
   throw new Error(`Too many levels of symbolic links: ${filePath}`);
 }
 
-async function ensureDanglingTargetAllowed(
+async function ensureWriteTargetAllowed(
   target: string,
   options: ConfigWriteOptions,
 ): Promise<string> {
-  if (!options.danglingLinkRoot) return target;
-  const root = await realpath(options.danglingLinkRoot).catch(() =>
-    resolve(options.danglingLinkRoot!),
-  );
-  // 目标不存在，按最近存在的父目录的真实路径判断，避免经由目录链接跳出工作区。
+  if (!options.linkTargetRoot) return target;
+  const root = await realpath(options.linkTargetRoot).catch(() => resolve(options.linkTargetRoot!));
+  // 目标可能不存在：按最近存在的父目录的真实路径判断，避免经由目录链接跳出工作区。
   let existingParent = dirname(target);
   let suffix = basename(target);
   for (;;) {
@@ -1258,7 +1258,7 @@ async function ensureDanglingTargetAllowed(
     suffix = join(basename(existingParent), suffix);
     existingParent = nextParent;
   }
-  throw new Error(`Refusing to follow a dangling symlink outside the workspace: ${target}`);
+  throw new Error(`Refusing to write a workspace config outside the workspace: ${target}`);
 }
 
 async function addPluginDirToConfig(
