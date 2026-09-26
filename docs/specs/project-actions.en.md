@@ -24,10 +24,13 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
 
 - Only the workspace root's `.zcode/config.json` is read; there is no walk up to parent folders, so
   the result is deterministic.
-- `name`: 1–80 characters; `command`: 1–4000 characters. Neither may contain control characters (C0
-  and DEL, including newlines and carriage returns; leading and trailing whitespace is trimmed). At
-  most 50 actions; other fields are ignored. Rejecting control characters means the menu shows
-  everything a single input will run: a second command can't hide after a newline.
+- `name`: 1–80 characters; `command`: 1–4000 characters. Neither may contain control or invisible
+  format characters (Unicode `Cc`: C0, DEL and C1, including newlines and carriage returns; `Cf`,
+  including the bidi controls U+202A–U+202E and U+2066–U+2069 and zero-width characters; the `Zl`/`Zp`
+  line and paragraph separators). Leading and trailing whitespace is trimmed. At most 50 actions;
+  other fields are ignored. Rejecting these characters means the menu shows everything a single input
+  will run: a second command can't hide after a newline, and bidi controls can't make the displayed
+  order differ from what runs.
 - `parseProjectActionsConfig` in `@zcode/shared` parses it with zod. A missing file or no `actions`
   gives an empty list. Invalid JSON or an invalid `actions` value gives an empty list plus an error,
   which the menu shows; no command runs.

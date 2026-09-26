@@ -22,12 +22,12 @@ export interface ProjectActionsConfig {
 
 // 修复原因：命令中的换行会让写入终端的一次输入变成多条命令，其它控制字符也会让菜单显示与实际执行不一致，
 // 仓库里的配置可借此隐藏后续命令。修复依据：名称与命令都拒绝 C0 控制字符与 DEL，菜单完整展示的就是将执行的内容。
+// 修复原因（续）：Unicode 双向控制符（U+202A–U+202E、U+2066–U+2069）会让浏览器按与实际字节不同的顺序显示命令，
+// 零宽等格式字符与行/段分隔符同样不可见。修复依据：一并拒绝 Cc（含 C1）、Cf、Zl、Zp 类字符。
+const HIDDEN_OR_CONTROL_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
 function hasNoControlCharacters(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code < 0x20 || code === 0x7f) return false;
-  }
-  return true;
+  return !HIDDEN_OR_CONTROL_CHARACTER.test(value);
 }
 
 const commandSchema = z.string().trim().min(1).max(4000).refine(hasNoControlCharacters);
