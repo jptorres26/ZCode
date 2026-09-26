@@ -12,6 +12,8 @@ import {
 } from "./zcode-distribution/assets.mjs";
 import { installScriptSource } from "./zcode-distribution/installer.mjs";
 
+const RELEASE_VERSION_PATTERN = /^[A-Za-z0-9._-]+$/;
+
 const root = resolve(import.meta.dirname, "..");
 const defaultOutDir = resolve(root, "dist", "zcode");
 const defaultBaseUrl = (await loadEndpointEnv()).ZCODE_DIST_BASE_URL?.trim() || "";
@@ -243,6 +245,13 @@ async function main() {
   const version = options.version ?? rootPackageJson.version;
   if (!version || typeof version !== "string") {
     throw new Error("Unable to resolve ZCode version.");
+  }
+  // version 会拼进 releases/<version> 输出路径与 tarball 名，安装脚本也只接受 [A-Za-z0-9._-]；
+  // 构建端之前接受任意 --version（如 1.2.3+build 或 ../x），产物要么逃出输出目录，要么装不上。
+  if (!RELEASE_VERSION_PATTERN.test(version) || version === "." || version === "..") {
+    throw new Error(
+      `Invalid release version "${version}": only letters, digits, ".", "_" and "-" are allowed.`,
+    );
   }
 
   await buildOutputs(options.skipBuild);
