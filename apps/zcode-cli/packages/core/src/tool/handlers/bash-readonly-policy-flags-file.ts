@@ -116,6 +116,31 @@ export const SORT_SAFE_FLAGS = {
   "--zero-terminated": "none",
 } as const satisfies Readonly<Record<string, SafeFlagValue>>;
 
+/** uniq 的只读选项；第二个操作数（输出文件）由 uniqCommandIsDangerous 拒绝。 */
+export const UNIQ_SAFE_FLAGS = {
+  "-D": "none",
+  "-c": "none",
+  "-d": "none",
+  "-f": "number",
+  "-i": "none",
+  "-s": "number",
+  "-u": "none",
+  "-w": "number",
+  "-z": "none",
+  "--all-repeated": "optionalString",
+  "--check-chars": "number",
+  "--count": "none",
+  "--group": "optionalString",
+  "--help": "none",
+  "--ignore-case": "none",
+  "--repeated": "none",
+  "--skip-chars": "number",
+  "--skip-fields": "number",
+  "--unique": "none",
+  "--version": "none",
+  "--zero-terminated": "none",
+} as const satisfies Readonly<Record<string, SafeFlagValue>>;
+
 export const BASE64_SAFE_FLAGS = {
   "-D": "none",
   "-b": "number",
