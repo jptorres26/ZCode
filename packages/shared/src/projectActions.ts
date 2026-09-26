@@ -23,17 +23,29 @@ export interface ProjectActionsConfig {
 // 修复原因：命令中的换行会让写入终端的一次输入变成多条命令，其它控制字符也会让菜单显示与实际执行不一致，
 // 仓库里的配置可借此隐藏后续命令。修复依据：名称与命令都拒绝 C0 控制字符与 DEL，菜单完整展示的就是将执行的内容。
 // 修复原因（续）：Unicode 双向控制符（U+202A–U+202E、U+2066–U+2069）会让浏览器按与实际字节不同的顺序显示命令，
-// 零宽等格式字符与行/段分隔符同样不可见。修复依据：一并拒绝 Cc（含 C1）、Cf、Zl、Zp 类字符。
-const HIDDEN_OR_CONTROL_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+// 零宽等格式字符、韩文填充符等默认不可见字符与行/段分隔符同样不可见；大段连续空白在自动换行后会把后续命令
+// 挤出可视区域。修复依据：命令拒绝 Cc（含 C1）、Cf、Zl、Zp、Default_Ignorable_Code_Point、盲文空白 U+2800，
+// 以及超过 16 个的连续空白。
+const HIDDEN_IN_COMMAND =
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]|\s{17,}/u;
+// 名称只用于显示：保留 ZWJ 表情与 LRM/RLM 等正常排版字符，只拒绝控制字符、行/段分隔符与会重排显示顺序的
+// 双向嵌入/覆盖/隔离符。
+const HIDDEN_IN_NAME = /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069]/u;
 
-function hasNoControlCharacters(value: string): boolean {
-  return !HIDDEN_OR_CONTROL_CHARACTER.test(value);
-}
-
-const commandSchema = z.string().trim().min(1).max(4000).refine(hasNoControlCharacters);
+const commandSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(4000)
+  .refine((value) => !HIDDEN_IN_COMMAND.test(value));
 
 const projectActionSchema = z.object({
-  name: z.string().trim().min(1).max(80).refine(hasNoControlCharacters),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .refine((value) => !HIDDEN_IN_NAME.test(value)),
   command: commandSchema,
 });
 
