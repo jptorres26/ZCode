@@ -68,6 +68,11 @@ export function useOptionalTabStore<T>(selector: (state: TabStoreState) => T): T
 /**
  * 获取 tab store 的原始引用（用于非 React 上下文，如 useEffect 中的订阅）
  */
+/** 同 useTabStoreApi，但无 provider 时返回 null（供按需读取、不订阅的调用方）。 */
+export function useOptionalTabStoreApi(): TabStore | null {
+  return useContext(TabStoreContext);
+}
+
 export function useTabStoreApi(): TabStore {
   const store = useContext(TabStoreContext);
   if (!store) {

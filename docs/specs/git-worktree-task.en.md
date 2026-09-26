@@ -91,9 +91,14 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   delete flow from hanging). The terminal service owns every PTY, covering the side pane and the bottom
   terminal. A terminal still inside `create()` is registered before its first await; once marked
   cancelled it ends as soon as it starts and `create()` rejects, and `disposeUnderPath` waits for that
-  too.
+  too. `disposeUnderPath` also blocks the folder (before any await): a later `create()` whose requested
+  or actual cwd is inside it is rejected at once until `ITerminalService.releasePathBlock({ path })` is
+  called; the delete flow releases it once the delete attempt ends, whether it succeeded or not.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
-  `getManagedWorktree` returns a value (queried when the menu opens).
+  `getManagedWorktree` returns a value (queried when the menu opens). 0. If the same worktree is also open as another local project (for example its root and a
+  subfolder), deletion is refused with a hint to close those first (checked before the
+  confirmations and again before releasing); otherwise the other entry's Agent keeps running inside
+  the worktree and removal fails or deletes a checkout that an unconfirmed workspace is using.
   1. If the workspace has a running conversation, the existing "Remove" confirmation for running
      workspaces comes first.
   2. A destructive confirmation names the folder that will be deleted and the branch that is kept.
@@ -114,7 +119,8 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
        nothing was deleted and offers "Delete anyway", which retries with `force`.
      - `leftover`: says the folder couldn't be fully deleted and the branch is kept; "Retry" calls
        `removeWorktreeLeftover`.
-     - Any other failure: the same message; "Retry" calls `removeWorktree` again.
+     - Any other failure (git deleted nothing, for example a locked worktree): says the folder and the
+       branch are both kept; "Retry" calls `removeWorktree` again.
 
 ```mermaid
 sequenceDiagram

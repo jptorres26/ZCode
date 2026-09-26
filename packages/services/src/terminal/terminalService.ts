@@ -14,8 +14,12 @@ import {
 } from "./terminalProfile.js";
 import { registerMemoryDiagnosticsProvider } from "#src/memoryDiagnostics.js";
 import {
+  assertTerminalCwdNotBlocked,
   disposeTerminalsUnderPath,
   type PendingTerminalCreate,
+  registerPendingTerminalCreate,
+  releaseTerminalPathBlock,
+  type TerminalPathBlocks,
   waitForExitBounded,
 } from "./terminalDisposal.js";
 
@@ -335,6 +339,7 @@ export function createTerminalService(dependencies: {
 }): ITerminalService {
   const terminals = new Map<string, TerminalInstance>();
   const pendingCreates = new Set<PendingTerminalCreate>();
+  const pathBlocks: TerminalPathBlocks = new Map();
   let nextId = 0;
   // 内存诊断计数器：客户端断连不回收 pty 时
   // 这里会只增不减。
@@ -373,18 +378,11 @@ export function createTerminalService(dependencies: {
       const id = String(nextId++);
       const shell = resolveTerminalShell();
       const cwd = resolveTerminalCwd(params.cwd);
+      assertTerminalCwdNotBlocked(pathBlocks, params.cwd, cwd);
       // 修复原因：创建过程中有多处 await（设置、node-pty 加载、realpath），期间的终端还不在 terminals 中，
       // disposeUnderPath 会漏掉它，随后它仍以待删除目录为 cwd 启动。修复依据：在第一个 await 之前登记为待创建，
       // 被取消时启动后立即结束并报错，disposeUnderPath 等待它结束。
-      let settlePending = () => {};
-      const pending: PendingTerminalCreate = {
-        cwd: resolve(cwd),
-        cancelled: false,
-        settled: new Promise<void>((resolveSettled) => {
-          settlePending = resolveSettled;
-        }),
-      };
-      pendingCreates.add(pending);
+      const { pending, settle: settlePending } = registerPendingTerminalCreate(pendingCreates, cwd);
       try {
         const env = resolveTerminalEnv();
         const terminalProfileSettings = await dependencies.settingService.get().catch(() => ({
@@ -464,7 +462,16 @@ export function createTerminalService(dependencies: {
     },
 
     async disposeUnderPath(params: { path: string }): Promise<void> {
-      await disposeTerminalsUnderPath(params.path, { pendingCreates, terminals, cleanupTerminal });
+      await disposeTerminalsUnderPath(params.path, {
+        pendingCreates,
+        terminals,
+        cleanupTerminal,
+        blocks: pathBlocks,
+      });
+    },
+
+    async releasePathBlock(params: { path: string }): Promise<void> {
+      releaseTerminalPathBlock(pathBlocks, params.path);
     },
 
     onDynamicData(id: string): Event<string> {

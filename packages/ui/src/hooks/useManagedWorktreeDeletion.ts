@@ -16,8 +16,10 @@ type ZCodeIntl = ReturnType<typeof useZCodeIntl>["intl"];
 export function useManagedWorktreeDeletion(options: {
   /** 该 workspace 行自己的（本地）Git 服务，而不是当前激活 workspace 的服务。 */
   gitService: IGitService;
-  /** 同一本地 Host 的终端服务：删除前结束该 worktree 内的终端并等待退出。 */
-  terminalService: Pick<ITerminalService, "disposeUnderPath">;
+  /** 同一本地 Host 的终端服务：删除前结束该 worktree 内的终端并等待退出，删除尝试结束后解除新建封锁。 */
+  terminalService: Pick<ITerminalService, "disposeUnderPath" | "releasePathBlock">;
+  /** 除本入口外、路径位于该 worktree 内的其它本地 workspace 入口（显示名）。 */
+  listOtherEntriesInWorktree: (worktreePath: string) => string[];
   workspacePath: string;
   /** 菜单打开且为本地 workspace 时才查询，避免每一行都常驻 git 调用。 */
   enabled: boolean;
@@ -28,6 +30,7 @@ export function useManagedWorktreeDeletion(options: {
   const {
     gitService,
     terminalService,
+    listOtherEntriesInWorktree,
     workspacePath,
     enabled,
     confirmRemovingRunningWorkspace,
@@ -59,8 +62,30 @@ export function useManagedWorktreeDeletion(options: {
     };
   }, [enabled, gitService, workspacePath]);
 
+  // 修复原因：同一 worktree 可能还以其它入口打开（如根目录与某个子目录），只释放当前入口时，其它入口的 Agent
+  // 仍以 worktree 内目录为 cwd：Windows 上删除失败，POSIX 上会在未确认的活动 workspace 下删掉检出。
+  // 修复依据：存在其它入口时拒绝删除并提示先关闭它们（确认前与释放前各检查一次）。
+  const refuseIfOtherEntriesOpen = useCallback(
+    (worktreePath: string): boolean => {
+      const others = listOtherEntriesInWorktree(worktreePath);
+      if (others.length === 0) return false;
+      toast(
+        intl.formatMessage(
+          { id: "git.worktree.delete.otherEntriesOpen" },
+          { names: others.join(", ") },
+        ),
+        { variant: "warning" },
+      );
+      return true;
+    },
+    [intl, listOtherEntriesInWorktree],
+  );
+
   const deleteWorktree = useCallback(async () => {
-    if (!managedWorktree || !(await confirmRemovingRunningWorkspace())) {
+    if (!managedWorktree || refuseIfOtherEntriesOpen(managedWorktree.worktreePath)) {
+      return;
+    }
+    if (!(await confirmRemovingRunningWorkspace())) {
       return;
     }
     const branchName = managedWorktree.branchName ?? "";
@@ -108,29 +133,37 @@ export function useManagedWorktreeDeletion(options: {
     // git worktree remove 失败甚至只删掉一部分文件；关闭标签触发的终端回收也是异步、不等待进程退出的。
     // 修复依据：先由终端服务结束该目录下的终端并等待其退出，再关闭入口并等待 runtime 释放完成，最后删除目录；
     // 失败时提示并提供重试。删除流程不做 Windows 保留名扫描：目录即将删除，扫描还会在删除时占用目录。
-    await terminalService
-      .disposeUnderPath({ path: managedWorktree.worktreePath })
-      .catch((error: unknown) => {
-        logger.warn("[WorktreeDeletion] 结束 worktree 终端失败", {
-          workspacePath,
-          error: getErrorMessage(error),
-        });
+    if (refuseIfOtherEntriesOpen(managedWorktree.worktreePath)) {
+      return;
+    }
+    const worktreePath = managedWorktree.worktreePath;
+    await terminalService.disposeUnderPath({ path: worktreePath }).catch((error: unknown) => {
+      logger.warn("[WorktreeDeletion] 结束 worktree 终端失败", {
+        workspacePath,
+        error: getErrorMessage(error),
       });
-    await releaseWorkspaceEntry({ scanReservedNames: false });
-    await removeReleasedWorktree({
-      gitService,
-      workspacePath,
-      worktreePath: managedWorktree.worktreePath,
-      branchName,
-      force,
-      intl,
     });
+    try {
+      await releaseWorkspaceEntry({ scanReservedNames: false });
+      await removeReleasedWorktree({
+        gitService,
+        workspacePath,
+        worktreePath,
+        branchName,
+        force,
+        intl,
+      });
+    } finally {
+      // 删除尝试结束（成功或失败）后解除新建终端封锁；之后的重试只在 toast 中进行，入口已关闭。
+      void terminalService.releasePathBlock({ path: worktreePath }).catch(() => undefined);
+    }
   }, [
     confirmDialog,
     confirmRemovingRunningWorkspace,
     gitService,
     intl,
     managedWorktree,
+    refuseIfOtherEntriesOpen,
     releaseWorkspaceEntry,
     terminalService,
     workspacePath,
@@ -186,11 +219,15 @@ async function removeReleasedWorktree(params: ReleasedWorktreeRemoval): Promise<
     );
     return;
   }
-  const retry =
-    result.reason === "leftover"
-      ? () => removeLeftoverWorktree(params)
-      : () => removeReleasedWorktree(params);
-  reportRemovalFailure(params, result.detail ?? result.reason, retry);
+  if (result.reason === "leftover") {
+    reportRemovalFailure(params, result.detail ?? result.reason, "leftover", () =>
+      removeLeftoverWorktree(params),
+    );
+    return;
+  }
+  reportRemovalFailure(params, result.detail ?? result.reason, "failed", () =>
+    removeReleasedWorktree(params),
+  );
 }
 
 async function removeLeftoverWorktree(params: ReleasedWorktreeRemoval): Promise<void> {
@@ -208,21 +245,29 @@ async function removeLeftoverWorktree(params: ReleasedWorktreeRemoval): Promise<
     );
     return;
   }
-  reportRemovalFailure(params, result.detail ?? result.reason, () =>
+  reportRemovalFailure(params, result.detail ?? result.reason, "leftover", () =>
     removeLeftoverWorktree(params),
   );
 }
 
+// 修复原因：git 在删除任何内容前就拒绝（如 worktree 被锁定）时，也提示“未能完全删除、重试删除剩余内容”，与事实不符。
+// 修复依据：leftover（已部分删除、登记已消失）与普通失败（目录与分支都还在）使用不同文案。
 function reportRemovalFailure(
   params: ReleasedWorktreeRemoval,
   error: string,
+  kind: "failed" | "leftover",
   retry: () => Promise<void>,
 ): void {
   const { intl, workspacePath, worktreePath, branchName } = params;
   logger.warn("[WorktreeDeletion] 删除 worktree 失败", { workspacePath, error });
   toast(
     intl.formatMessage(
-      { id: "git.worktree.delete.failedAfterRelease" },
+      {
+        id:
+          kind === "leftover"
+            ? "git.worktree.delete.leftoverAfterRelease"
+            : "git.worktree.delete.failedAfterRelease",
+      },
       { path: worktreePath, branchName, error },
     ),
     {

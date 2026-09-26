@@ -54,7 +54,9 @@ import {
 } from "@/lib/remoteWorkspaceHistory.js";
 import { TaskList } from "@/TaskList.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
-import type { WorkspaceTabState } from "@/store/tabStore.js";
+import { isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
+import { useOptionalTabStoreApi } from "@/store/TabStoreProvider.js";
+import { getPathLeaf, isSameOrInsidePath } from "@/lib/path.js";
 import type { RemoteConnectionLogEntry } from "@/hooks/useRemoteConnectionLogs.js";
 import { ReconnectingRemoteWorkspaceLogTooltip } from "@/WorkspaceSidebar/ReconnectingRemoteWorkspaceLogTooltip.js";
 import { cn } from "@/components/lib/utils.js";
@@ -445,10 +447,28 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     void releaseWorkspaceEntry();
   }, [confirmRemovingRunningWorkspace, isExpanded, releaseWorkspaceEntry, workspaceKeyForLog]);
 
+  const tabStoreApi = useOptionalTabStoreApi();
+  // 删除时按需读取（不订阅）：同一 worktree 的其它本地入口。
+  const listOtherEntriesInWorktree = useCallback(
+    (worktreePath: string) =>
+      (tabStoreApi?.getState().tabs ?? [])
+        .filter(isWorkspaceTab)
+        .filter(
+          (other) =>
+            other.id !== tab.id &&
+            !other.remoteSessionId &&
+            !other.remoteTarget &&
+            !other.workspaceIdentity &&
+            isSameOrInsidePath(other.workspacePath, worktreePath),
+        )
+        .map((other) => getPathLeaf(other.workspacePath)),
+    [tab.id, tabStoreApi],
+  );
   // 删除 ZCode 创建的 worktree。规范：docs/specs/git-worktree-task.md
   const { managedWorktree, deleteWorktree } = useManagedWorktreeDeletion({
     gitService: baseServices.gitService,
     terminalService: baseServices.terminalService,
+    listOtherEntriesInWorktree,
     workspacePath: tab.workspacePath,
     enabled: workspaceActionMenuOpen && !isRemoteWorkspace,
     confirmRemovingRunningWorkspace,
