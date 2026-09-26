@@ -29,16 +29,14 @@ import {
   mkdir,
   readFile,
   readdir,
-  rename,
-  rm,
+  realpath,
   symlink,
-  writeFile,
 } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parse as parseToml } from "smol-toml";
+import { atomicWritePrivateTextFile } from "@zcode/shared/node";
 import { CommandFileParser } from "../commands/commandFileParser.js";
 import type { ISettingService } from "../setting/setting.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
@@ -1105,16 +1103,34 @@ async function readMcpServersFromSourceFile(
   }
 }
 
+/**
+ * 读取目标配置用于“同名已存在”判断。目标配置无法读取时返回 null：
+ * 扫描与导入不能因为一份坏配置整体失败（上一版改为抛错后，这里位于逐项 try 之外，
+ * 会让整个扫描/导入中断），真正写入时 readJsonFileOrEmpty 会在逐项 try 内报错并标记该项失败。
+ */
+async function readTargetConfigForExistingNames(
+  configPath: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await readJsonFileOrEmpty(configPath);
+  } catch (error) {
+    log.warn("[settings-sync] target config is unreadable; existing names unknown", {
+      configPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function collectExistingMcpServerNameKeys(
   targetScope: SettingsSyncSourceScope,
   workspacePath: string | undefined,
 ): Promise<Set<string>> {
   const nameKeys = new Set<string>();
   const targetConfigPath = resolveMcpConfigPathForScope(targetScope, workspacePath);
-  if (targetConfigPath) {
-    for (const name of Object.keys(
-      readZcodeMcpServers(await readJsonFileOrEmpty(targetConfigPath)),
-    )) {
+  const parsed = targetConfigPath ? await readTargetConfigForExistingNames(targetConfigPath) : null;
+  if (parsed) {
+    for (const name of Object.keys(readZcodeMcpServers(parsed))) {
       nameKeys.add(normalizeMcpServerNameKey(name));
     }
   }
@@ -1148,16 +1164,16 @@ function readStringArray(value: unknown): string[] {
 }
 
 async function writeJsonFile(filePath: string, value: Record<string, unknown>): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
-  // 先写临时文件再 rename：直接 writeFile 在进程中途退出时会把配置截断成空文件。
-  const tempPath = `${filePath}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
-    await rename(tempPath, filePath);
-  } catch (error) {
-    await rm(tempPath, { force: true });
+  // 修复原因：上一版 temp + rename 用默认权限（受 umask 影响，常见为 0644）创建临时文件，
+  // 覆盖了 CLI 以 0600 写入、可能含 MCP env/header 密钥的配置；rename 还会把符号链接替换成普通文件，
+  // Windows 上目标被短暂占用时 rename 直接失败。
+  // 修复依据：复用共享的 atomicWritePrivateTextFile（0600 + EPERM/EBUSY/EACCES 重试），
+  // 并先解析符号链接，把内容原子写到链接指向的真实文件。
+  const targetPath = await realpath(filePath).catch((error: unknown) => {
+    if (isFileNotFoundError(error)) return filePath;
     throw error;
-  }
+  });
+  await atomicWritePrivateTextFile(targetPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function addPluginDirToConfig(filePath: string, pluginPath: string): Promise<void> {
@@ -1178,7 +1194,7 @@ async function addPluginDirToConfig(filePath: string, pluginPath: string): Promi
 }
 
 async function collectConfiguredPluginIds(configPath: string): Promise<Set<string>> {
-  const parsed = await readJsonFileOrEmpty(configPath);
+  const parsed = (await readTargetConfigForExistingNames(configPath)) ?? {};
   const plugins = isRecord(parsed.plugins) ? parsed.plugins : {};
   const ids = new Set<string>();
   for (const pluginPath of readStringArray(plugins.dirs)) {
@@ -2075,6 +2091,8 @@ async function importPluginsForAgent(
       continue;
     }
     try {
+      // 先确认目标配置可读再复制插件目录，避免配置损坏时留下未登记的孤立插件副本。
+      await readJsonFileOrEmpty(selectedConfigPath);
       await mkdir(dirname(targetCandidate.targetPath), { recursive: true });
       await importPluginDirectory(candidate.sourcePath, targetCandidate.targetPath, importMode);
       await addPluginDirToConfig(selectedConfigPath, targetCandidate.targetPath);
