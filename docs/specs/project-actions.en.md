@@ -24,13 +24,17 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
 
 - Only the workspace root's `.zcode/config.json` is read; there is no walk up to parent folders, so
   the result is deterministic.
-- `name`: 1–80 characters; `command`: 1–4000 characters. Neither may contain control or invisible
-  format characters (Unicode `Cc`: C0, DEL and C1, including newlines and carriage returns; `Cf`,
-  including the bidi controls U+202A–U+202E and U+2066–U+2069 and zero-width characters; the `Zl`/`Zp`
-  line and paragraph separators). Leading and trailing whitespace is trimmed. At most 50 actions;
-  other fields are ignored. Rejecting these characters means the menu shows everything a single input
-  will run: a second command can't hide after a newline, and bidi controls can't make the displayed
-  order differ from what runs.
+- `name`: 1–80 characters; `command`: 1–4000 characters. Leading and trailing whitespace is trimmed.
+  At most 50 actions; other fields are ignored.
+  - `command` may not contain control or invisible characters: Unicode `Cc` (C0, DEL and C1,
+    including newlines and carriage returns), `Cf` (including the bidi controls U+202A–U+202E and
+    U+2066–U+2069 and zero-width characters), the `Zl`/`Zp` line and paragraph separators,
+    `Default_Ignorable_Code_Point` characters (such as Hangul fillers) and the braille blank U+2800, and
+    no run of more than 16 whitespace characters. So the menu shows everything a single input will
+    run: a second command can't hide after a newline, bidi controls can't make the displayed order
+    differ from what runs, and a wall of blanks can't push the rest of the command out of view.
+  - `name` is display-only: it rejects `Cc`, `Zl`/`Zp` and the bidi embedding, override and isolate
+    controls (U+202A–U+202E, U+2066–U+2069) that reorder the display, and keeps ZWJ emoji and LRM/RLM.
 - `parseProjectActionsConfig` in `@zcode/shared` parses it with zod. A missing file or no `actions`
   gives an empty list. Invalid JSON or an invalid `actions` value gives an empty list plus an error,
   which the menu shows; no command runs.
