@@ -14,7 +14,7 @@ import {
 } from "./terminalProfile.js";
 import { registerMemoryDiagnosticsProvider } from "#src/memoryDiagnostics.js";
 import {
-  assertTerminalCwdNotBlocked,
+  assertTerminalCwdAllowed,
   disposeTerminalsUnderPath,
   type PendingTerminalCreate,
   registerPendingTerminalCreate,
@@ -378,7 +378,6 @@ export function createTerminalService(dependencies: {
       const id = String(nextId++);
       const shell = resolveTerminalShell();
       const cwd = resolveTerminalCwd(params.cwd);
-      assertTerminalCwdNotBlocked(pathBlocks, params.cwd, cwd);
       // 修复原因：创建过程中有多处 await（设置、node-pty 加载、realpath），期间的终端还不在 terminals 中，
       // disposeUnderPath 会漏掉它，随后它仍以待删除目录为 cwd 启动。修复依据：在第一个 await 之前登记为待创建，
       // 被取消时启动后立即结束并报错，disposeUnderPath 等待它结束。
@@ -396,6 +395,7 @@ export function createTerminalService(dependencies: {
         const nodePty = await loadNodePtyModule();
         ensureNodePtySpawnHelperExecutable();
         const realCwd = await realpath(cwd).catch(() => cwd);
+        await assertTerminalCwdAllowed(pathBlocks, [params.cwd, cwd, realCwd]);
         const dataEmitter = new Emitter<string>();
         const exitEmitter = new Emitter<number>();
 

@@ -91,14 +91,21 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   delete flow from hanging). The terminal service owns every PTY, covering the side pane and the bottom
   terminal. A terminal still inside `create()` is registered before its first await; once marked
   cancelled it ends as soon as it starts and `create()` rejects, and `disposeUnderPath` waits for that
-  too. `disposeUnderPath` also blocks the folder (before any await): a later `create()` whose requested
-  or actual cwd is inside it is rejected at once until `ITerminalService.releasePathBlock({ path })` is
-  called; the delete flow releases it once the delete attempt ends, whether it succeeded or not.
+  too. `disposeUnderPath` also blocks the folder (before any await): a later `create()` whose requested,
+  resolved or real cwd is inside it (reaching it through a symlink counts) is rejected until
+  `ITerminalService.releasePathBlock({ path })` is called; the delete flow releases it once the delete
+  attempt ends, whether it succeeded or not. The block records the folder's device, inode and birth
+  time: if a reload or crash leaves it unreleased, it lapses as soon as the folder is gone or is a
+  different folder re-created at the same path, so later worktrees can still open terminals (no
+  timer involved).
+- Precondition: if the same worktree is also open as another local project (for example its root
+  and a subfolder), deletion is refused with a hint to close those first (checked before the
+  confirmations and again before releasing; when the path strings differ, each entry's worktree is
+  compared by real path, which covers entries opened through a symlink). Otherwise the other entry's
+  Agent keeps running inside the worktree and removal fails or deletes a checkout that an unconfirmed
+  workspace is using.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
-  `getManagedWorktree` returns a value (queried when the menu opens). 0. If the same worktree is also open as another local project (for example its root and a
-  subfolder), deletion is refused with a hint to close those first (checked before the
-  confirmations and again before releasing); otherwise the other entry's Agent keeps running inside
-  the worktree and removal fails or deletes a checkout that an unconfirmed workspace is using.
+  `getManagedWorktree` returns a value (queried when the menu opens).
   1. If the workspace has a running conversation, the existing "Remove" confirmation for running
      workspaces comes first.
   2. A destructive confirmation names the folder that will be deleted and the branch that is kept.
