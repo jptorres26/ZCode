@@ -193,6 +193,22 @@ export interface GitBranchMutationResult {
   issues: GitBranchMutationIssue[];
 }
 
+/** 在新 worktree 中开始任务。规范：docs/specs/git-worktree-task.md */
+export interface GitCreateWorktreeRequest extends GitRepositoryRequest {
+  branchName: string;
+}
+
+export type GitCreateWorktreeResult =
+  | {
+      ok: true;
+      branchName: string;
+      /** 新 worktree 的根目录。 */
+      worktreePath: string;
+      /** 与原 workspace 在仓库中的相对位置对应的新 workspace 路径。 */
+      workspacePath: string;
+    }
+  | { ok: false; branchName: string | null; issues: GitBranchMutationIssue[] };
+
 export interface GitPathMutationRequest extends GitRepositoryRequest {
   paths: string[];
 }

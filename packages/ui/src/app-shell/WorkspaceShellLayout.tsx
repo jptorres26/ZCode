@@ -1140,6 +1140,19 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     workspaceAbsPath,
     workspaceIdentity,
   ]);
+  // 新 worktree 是一个新的本地路径：先把草稿转过去，再在该路径开始草稿。规范：docs/specs/git-worktree-task.md
+  const isRemoteWorkspace = Boolean(workspaceRemoteSessionId || workspaceIdentity?.trim());
+  const handleWorktreeCreated = useCallback(
+    (result: { workspacePath: string }) => {
+      requestV4ComposerDraftWorkspaceTransfer({
+        sourceWorkspacePath: workspaceAbsPath,
+        sourceWorkspaceIdentity: workspaceIdentity,
+        targetWorkspacePath: result.workspacePath,
+      });
+      handleStartDraftInWorkspaceInChat(result.workspacePath, undefined, "project");
+    },
+    [handleStartDraftInWorkspaceInChat, workspaceAbsPath, workspaceIdentity],
+  );
   const handleSelectComposerPlugin = useCallback(
     (mention: ComposerMentionPrefill) => {
       useZCodeSessionStore
@@ -1210,6 +1223,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
             // 输入框区域在底部，Radix 碰撞避让会把分支菜单翻到下方。
             // 这里锁定上方弹出，避免菜单遮挡输入区并保持操作方向稳定。
             avoidPopoverCollisions={false}
+            onWorktreeCreated={isRemoteWorkspace ? undefined : handleWorktreeCreated}
           />
         ) : null}
       </>

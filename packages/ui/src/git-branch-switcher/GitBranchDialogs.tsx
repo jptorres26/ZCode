@@ -19,7 +19,24 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { FileDisplayInline } from "@/lib/fileDisplay.js";
 import { AlertCircleIcon, GitBranchIcon, LoaderIcon } from "lucide-react";
 
+/** 同一对话框用于“新建分支并切换”与“在新 worktree 中开始”，仅文案不同。 */
+const CREATE_DIALOG_MESSAGE_IDS = {
+  branch: {
+    title: "git.branchSwitcher.createDialog.title",
+    description: "git.branchSwitcher.createDialog.description",
+    helper: "git.branchSwitcher.createDialog.helper",
+    confirm: "git.branchSwitcher.createDialog.confirm",
+  },
+  worktree: {
+    title: "git.worktree.dialog.title",
+    description: "git.worktree.dialog.description",
+    helper: "git.worktree.dialog.helper",
+    confirm: "git.worktree.dialog.confirm",
+  },
+} as const;
+
 interface GitBranchCreateDialogProps {
+  mode?: keyof typeof CREATE_DIALOG_MESSAGE_IDS;
   open: boolean;
   branchName: string;
   mutationPending: boolean;
@@ -30,6 +47,7 @@ interface GitBranchCreateDialogProps {
 }
 
 export function GitBranchCreateDialog({
+  mode = "branch",
   open,
   branchName,
   mutationPending,
@@ -39,20 +57,18 @@ export function GitBranchCreateDialog({
   onSubmit,
 }: GitBranchCreateDialogProps) {
   const { intl } = useZCodeIntl();
+  const messageIds = CREATE_DIALOG_MESSAGE_IDS[mode];
+  const inputId = `git-branch-switcher-${mode}-input`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg gap-0 rounded-2xl p-0 overflow-hidden">
         <DialogHeader className="gap-2 px-6 py-5 pb-0">
           <DialogTitle className="text-lg font-medium text-foreground">
-            {intl.formatMessage({
-              id: "git.branchSwitcher.createDialog.title",
-            })}
+            {intl.formatMessage({ id: messageIds.title })}
           </DialogTitle>
           <DialogDescription className="text-ui-base leading-6 text-foreground-subtle">
-            {intl.formatMessage({
-              id: "git.branchSwitcher.createDialog.description",
-            })}
+            {intl.formatMessage({ id: messageIds.description })}
           </DialogDescription>
         </DialogHeader>
 
@@ -65,7 +81,7 @@ export function GitBranchCreateDialog({
         >
           <div className="space-y-2">
             <label
-              htmlFor="git-branch-switcher-create-input"
+              htmlFor={inputId}
               className="inline-flex text-ui-base font-medium text-foreground-subtle"
             >
               {intl.formatMessage({
@@ -73,7 +89,7 @@ export function GitBranchCreateDialog({
               })}
             </label>
             <Input
-              id="git-branch-switcher-create-input"
+              id={inputId}
               size="lg"
               autoFocus
               value={branchName}
@@ -87,9 +103,7 @@ export function GitBranchCreateDialog({
               }}
             />
             <p className="text-ui-base text-foreground-subtle">
-              {intl.formatMessage({
-                id: "git.branchSwitcher.createDialog.helper",
-              })}
+              {intl.formatMessage({ id: messageIds.helper })}
             </p>
           </div>
 
@@ -111,9 +125,7 @@ export function GitBranchCreateDialog({
               className="h-10 min-w-0 px-5"
             >
               {mutationPending ? <LoaderIcon className="size-4 animate-spin" /> : null}
-              {intl.formatMessage({
-                id: "git.branchSwitcher.createDialog.confirm",
-              })}
+              {intl.formatMessage({ id: messageIds.confirm })}
             </Button>
           </DialogFooter>
         </form>
