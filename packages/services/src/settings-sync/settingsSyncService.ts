@@ -34,7 +34,7 @@ import {
   symlink,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parse as parseToml } from "smol-toml";
 import { atomicWritePrivateTextFile } from "@zcode/shared/node";
@@ -1138,24 +1138,41 @@ async function collectExistingMcpServerNameKeys(
   return nameKeys;
 }
 
+/** 写入工作区配置时传入工作区根：悬空符号链接只允许指向该目录内。 */
+interface ConfigWriteOptions {
+  danglingLinkRoot?: string;
+}
+
+function configWriteOptionsForScope(
+  targetScope: SettingsSyncSourceScope,
+  workspacePath: string | undefined,
+): ConfigWriteOptions {
+  return targetScope === "global" || !workspacePath ? {} : { danglingLinkRoot: workspacePath };
+}
+
 async function addMcpServerToZcodeConfig(
   filePath: string,
   name: string,
   config: McpServerConfig,
+  options: ConfigWriteOptions = {},
 ): Promise<void> {
   const parsed = await readJsonFileOrEmpty(filePath);
   const currentMcp = isRecord(parsed.mcp) ? parsed.mcp : {};
   const servers = readZcodeMcpServers(parsed);
-  await writeJsonFile(filePath, {
-    ...parsed,
-    mcp: {
-      ...currentMcp,
-      servers: {
-        ...servers,
-        [name]: config,
+  await writeJsonFile(
+    filePath,
+    {
+      ...parsed,
+      mcp: {
+        ...currentMcp,
+        servers: {
+          ...servers,
+          [name]: config,
+        },
       },
     },
-  });
+    options,
+  );
 }
 
 function readStringArray(value: unknown): string[] {
@@ -1164,13 +1181,17 @@ function readStringArray(value: unknown): string[] {
     : [];
 }
 
-async function writeJsonFile(filePath: string, value: Record<string, unknown>): Promise<void> {
+async function writeJsonFile(
+  filePath: string,
+  value: Record<string, unknown>,
+  options: ConfigWriteOptions = {},
+): Promise<void> {
   // 修复原因：上一版 temp + rename 用默认权限（受 umask 影响，常见为 0644）创建临时文件，
   // 覆盖了 CLI 以 0600 写入、可能含 MCP env/header 密钥的配置；rename 还会把符号链接替换成普通文件，
   // Windows 上目标被短暂占用时 rename 直接失败。
   // 修复依据：复用共享的 atomicWritePrivateTextFile（0600 + EPERM/EBUSY/EACCES 重试），
   // 并先解析符号链接，把内容原子写到链接指向的真实文件。
-  const targetPath = await resolveConfigWriteTarget(filePath);
+  const targetPath = await resolveConfigWriteTarget(filePath, options);
   await atomicWritePrivateTextFile(targetPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
@@ -1182,8 +1203,13 @@ const MAX_SYMLINK_HOPS = 40;
  * 修复原因：realpath 对悬空链接（目标尚未创建，常见于刚部署的 dotfiles）同样报 ENOENT，旧逻辑把它当作
  * “路径不存在”，rename 会覆盖链接本身，把可能含密钥的配置写到工作区而不是链接指向的位置。
  * 修复依据：lstat/readlink 逐级跟随到第一个非链接或不存在的路径；相对目标按链接所在目录的真实路径解析。
+ * 工作区配置可能来自克隆的仓库：悬空链接的最终目标必须位于工作区内，否则拒绝写入（该项导入失败，链接保持不变），
+ * 避免仓库借悬空链接把可能含密钥的配置写到任意位置。用户级配置（dotfiles）不受此限制。
  */
-async function resolveConfigWriteTarget(filePath: string): Promise<string> {
+async function resolveConfigWriteTarget(
+  filePath: string,
+  options: ConfigWriteOptions = {},
+): Promise<string> {
   try {
     return await realpath(filePath);
   } catch (error) {
@@ -1195,7 +1221,7 @@ async function resolveConfigWriteTarget(filePath: string): Promise<string> {
     try {
       isLink = (await lstat(current)).isSymbolicLink();
     } catch (error) {
-      if (isFileNotFoundError(error)) return current;
+      if (isFileNotFoundError(error)) return await ensureDanglingTargetAllowed(current, options);
       throw error;
     }
     if (!isLink) return current;
@@ -1206,7 +1232,40 @@ async function resolveConfigWriteTarget(filePath: string): Promise<string> {
   throw new Error(`Too many levels of symbolic links: ${filePath}`);
 }
 
-async function addPluginDirToConfig(filePath: string, pluginPath: string): Promise<void> {
+async function ensureDanglingTargetAllowed(
+  target: string,
+  options: ConfigWriteOptions,
+): Promise<string> {
+  if (!options.danglingLinkRoot) return target;
+  const root = await realpath(options.danglingLinkRoot).catch(() =>
+    resolve(options.danglingLinkRoot!),
+  );
+  // 目标不存在，按最近存在的父目录的真实路径判断，避免经由目录链接跳出工作区。
+  let existingParent = dirname(target);
+  let suffix = basename(target);
+  for (;;) {
+    const resolvedParent = await realpath(existingParent).catch(() => null);
+    if (resolvedParent) {
+      const resolvedTarget = join(resolvedParent, suffix);
+      const relativePath = relative(root, resolvedTarget);
+      if (relativePath && !relativePath.startsWith("..") && !isAbsolute(relativePath)) {
+        return target;
+      }
+      break;
+    }
+    const nextParent = dirname(existingParent);
+    if (nextParent === existingParent) break;
+    suffix = join(basename(existingParent), suffix);
+    existingParent = nextParent;
+  }
+  throw new Error(`Refusing to follow a dangling symlink outside the workspace: ${target}`);
+}
+
+async function addPluginDirToConfig(
+  filePath: string,
+  pluginPath: string,
+  options: ConfigWriteOptions = {},
+): Promise<void> {
   const parsed = await readJsonFileOrEmpty(filePath);
   const plugins = isRecord(parsed.plugins) ? parsed.plugins : {};
   const dirs = readStringArray(plugins.dirs);
@@ -1214,13 +1273,17 @@ async function addPluginDirToConfig(filePath: string, pluginPath: string): Promi
   if (dirs.map((item) => resolve(item)).includes(resolvedPluginPath)) {
     return;
   }
-  await writeJsonFile(filePath, {
-    ...parsed,
-    plugins: {
-      ...plugins,
-      dirs: [...dirs, resolvedPluginPath],
+  await writeJsonFile(
+    filePath,
+    {
+      ...parsed,
+      plugins: {
+        ...plugins,
+        dirs: [...dirs, resolvedPluginPath],
+      },
     },
-  });
+    options,
+  );
 }
 
 async function collectConfiguredPluginIds(configPath: string): Promise<Set<string>> {
@@ -2125,7 +2188,11 @@ async function importPluginsForAgent(
       await readJsonFileOrEmpty(selectedConfigPath);
       await mkdir(dirname(targetCandidate.targetPath), { recursive: true });
       await importPluginDirectory(candidate.sourcePath, targetCandidate.targetPath, importMode);
-      await addPluginDirToConfig(selectedConfigPath, targetCandidate.targetPath);
+      await addPluginDirToConfig(
+        selectedConfigPath,
+        targetCandidate.targetPath,
+        configWriteOptionsForScope(selectedTargetScope, workspacePath),
+      );
       importedCount += 1;
       const existingPluginIds = existingPluginIdsByConfigPath.get(selectedConfigPath);
       if (existingPluginIds) {
@@ -2213,7 +2280,12 @@ async function importMcpServersForAgent(
       continue;
     }
     try {
-      await addMcpServerToZcodeConfig(selectedConfigPath, candidate.name, candidate.config);
+      await addMcpServerToZcodeConfig(
+        selectedConfigPath,
+        candidate.name,
+        candidate.config,
+        configWriteOptionsForScope(selectedTargetScope, workspacePath),
+      );
       importedCount += 1;
       const existingNameKeys = existingNameKeysByTargetScope.get(selectedTargetScope);
       if (existingNameKeys) {
