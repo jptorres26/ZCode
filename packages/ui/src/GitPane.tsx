@@ -36,6 +36,13 @@ import {
   type GitPaneFileActionId,
 } from "@/GitPane/fileActions.js";
 import { getFileChangeFindState } from "@/GitPane/fileChangeFindSearch.js";
+import {
+  REVIEW_SPLIT_DIFF_MIN_WIDTH_PX,
+  resolveReviewDiffStyle,
+  resolveReviewWrapLongLines,
+} from "@/GitPane/diffViewOptions.js";
+import { GitPaneDiffViewMenu } from "@/GitPane/GitPaneDiffViewMenu.js";
+import { useElementMinWidth } from "@/GitPane/useElementMinWidth.js";
 import { logger } from "@/logger.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { resolveTheme } from "@/useTheme.js";
@@ -84,6 +91,21 @@ export function GitPane({
   const { intl } = useZCodeIntl();
   const theme = useZCodeStore((state) => state.theme);
   const codePreviewSettings = useZCodeStore((state) => state.codePreviewSettings);
+  const setCodePreviewSettings = useZCodeStore((state) => state.setCodePreviewSettings);
+  // diff 视图选项：布局偏好持久化在 codePreviewSettings，换行覆盖只属于本面板。
+  // 规范：docs/specs/git-review-pane-diff-view-options.md
+  const paneRef = useRef<HTMLElement>(null);
+  const canSplitDiff = useElementMinWidth(paneRef, REVIEW_SPLIT_DIFF_MIN_WIDTH_PX);
+  const [wrapOverride, setWrapOverride] = useState<boolean | null>(null);
+  const diffStyle = resolveReviewDiffStyle(codePreviewSettings.reviewDiffStyle, canSplitDiff);
+  const wrapLongLines = resolveReviewWrapLongLines(wrapOverride, codePreviewSettings.wrapLongLines);
+  const reviewCodePreviewSettings = useMemo(
+    () =>
+      wrapLongLines === codePreviewSettings.wrapLongLines
+        ? codePreviewSettings
+        : { ...codePreviewSettings, wrapLongLines },
+    [codePreviewSettings, wrapLongLines],
+  );
   const workspaceOpenTarget = useWorkspaceOpenInEditorTarget({
     workspacePath,
     workspaceIdentity,
@@ -513,8 +535,12 @@ export function GitPane({
   );
 
   return (
-    <section data-testid={TID_GIT_PANE} className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex items-center justify-between gap-3 p-3">
+    <section
+      ref={paneRef}
+      data-testid={TID_GIT_PANE}
+      className="flex h-full min-h-0 flex-col bg-background"
+    >
+<div className="flex items-center justify-between gap-3 p-3">
         <Select value={currentSourceOption.id} onValueChange={handleSelectSource}>
           <SelectTrigger className="max-w-full" size="lg">
             <SelectValue />
@@ -565,6 +591,13 @@ export function GitPane({
               {intl.formatMessage({ id: "git.fileAction.discardAll" })}
             </Button>
           ) : null}
+          <GitPaneDiffViewMenu
+            diffStyle={diffStyle}
+            canSplit={canSplitDiff}
+            wrapLongLines={wrapLongLines}
+            onDiffStyleChange={(reviewDiffStyle) => setCodePreviewSettings({ reviewDiffStyle })}
+            onWrapLongLinesChange={setWrapOverride}
+          />
           <Button
             type="button"
             variant="ghost"
@@ -623,7 +656,8 @@ export function GitPane({
                         path: resolveChangePath(change),
                         deleted: change.kind === "deleted",
                       })}
-                      codePreviewSettings={codePreviewSettings}
+                      codePreviewSettings={reviewCodePreviewSettings}
+                      diffStyle={diffStyle}
                       resolvedTheme={resolvedTheme}
                       onCopyAbsolutePath={handleCopyAbsolutePath}
                       onCopyRelativePath={handleCopyRelativePath}

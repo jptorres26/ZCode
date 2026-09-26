@@ -26,7 +26,7 @@ import { getDiffFallbackMessageId, getGitPaneDiffPreviewPlan } from "@/GitPane/h
 import { FileDisplayInline } from "@/lib/fileDisplay.js";
 import type { GitPaneFileChange } from "@/hooks/useGitRepository.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import type { CodePreviewSettings } from "@/store/index.js";
+import type { CodePreviewSettings, ReviewDiffStyle } from "@/lib/codePreviewSettings.js";
 import type { ResolvedTheme } from "@/useTheme.js";
 import { LightweightDiffPreview } from "@/components/ui/lightweight-diff-preview.js";
 
@@ -47,6 +47,7 @@ export function GitPaneChangeCard({
   isExpanded,
   canRevealInFileManager,
   codePreviewSettings,
+  diffStyle,
   resolvedTheme,
   onCopyAbsolutePath,
   onCopyRelativePath,
@@ -71,7 +72,9 @@ export function GitPaneChangeCard({
   isDiffLoading: boolean;
   isExpanded: boolean;
   canRevealInFileManager: boolean;
+  /** wrapLongLines 已按 Review 面板的换行覆盖解析。 */
   codePreviewSettings: CodePreviewSettings;
+  diffStyle: ReviewDiffStyle;
   resolvedTheme: ResolvedTheme;
   onCopyAbsolutePath: (change: GitPaneFileChange) => void;
   onCopyRelativePath: (change: GitPaneFileChange) => void;
@@ -245,6 +248,8 @@ export function GitPaneChangeCard({
               <DiffViewer
                 patch={diffState.patch}
                 diffClassName="block"
+                diffStyle={diffStyle}
+                wrapLongLines={codePreviewSettings.wrapLongLines}
                 fontSizePx={codePreviewSettings.fontSizePx}
                 lightTheme={codePreviewSettings.lightTheme}
                 darkTheme={codePreviewSettings.darkTheme}
@@ -261,6 +266,8 @@ export function GitPaneChangeCard({
                 oldFile={multiFileDiffFiles.oldFile}
                 newFile={multiFileDiffFiles.newFile}
                 diffClassName="block"
+                diffStyle={diffStyle}
+                wrapLongLines={codePreviewSettings.wrapLongLines}
                 fontSizePx={codePreviewSettings.fontSizePx}
                 lightTheme={codePreviewSettings.lightTheme}
                 darkTheme={codePreviewSettings.darkTheme}

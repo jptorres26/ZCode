@@ -7,12 +7,16 @@
  */
 import type { BundledTheme } from "shiki";
 
+/** Review 面板 diff 布局。规范：docs/specs/git-review-pane-diff-view-options.md */
+export type ReviewDiffStyle = "unified" | "split";
+
 export interface CodePreviewSettings {
   lightTheme: BundledTheme;
   darkTheme: BundledTheme;
   showLineNumbers: boolean;
   wrapLongLines: boolean;
   fontSizePx: number;
+  reviewDiffStyle: ReviewDiffStyle;
 }
 
 export const DEFAULT_CODE_PREVIEW_SETTINGS: CodePreviewSettings = {
@@ -21,4 +25,10 @@ export const DEFAULT_CODE_PREVIEW_SETTINGS: CodePreviewSettings = {
   showLineNumbers: true,
   wrapLongLines: false,
   fontSizePx: 12,
+  reviewDiffStyle: "unified",
 };
+
+/** localStorage 中的值可能被旧版本或手工修改污染，非法值回退为统一视图。 */
+export function normalizeReviewDiffStyle(value: unknown): ReviewDiffStyle {
+  return value === "split" ? "split" : "unified";
+}

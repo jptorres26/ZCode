@@ -184,6 +184,7 @@ export function PreviewPaneContent({
         oldFile={multiFileDiffFiles.oldFile}
         newFile={multiFileDiffFiles.newFile}
         diffClassName="block"
+        wrapLongLines={codePreviewSettings.wrapLongLines}
         fontSizePx={codePreviewSettings.fontSizePx}
         lightTheme={codePreviewSettings.lightTheme}
         darkTheme={codePreviewSettings.darkTheme}
