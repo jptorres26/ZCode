@@ -128,6 +128,19 @@ async function execDocker(args: string[]): Promise<string> {
   });
 }
 
+/**
+ * 修复原因：`--no-trunc` 时 Names 列会列出全部名称并以逗号连接，包括旧式 `--link` 别名（如 `db,web/db`），
+ * 按名称精确匹配会失败，十六进制样式的名称还会落到 ID 前缀匹配而选中别的容器。
+ * 修复依据：与截断输出一致，取第一个不含 `/` 的名称作为主名称。
+ */
+function resolvePrimaryContainerName(names: string): string {
+  const candidates = names
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  return candidates.find((name) => !name.includes("/")) ?? candidates[0] ?? names;
+}
+
 export function parseDockerContainerList(rawOutput: string): DockerContainerInfo[] {
   return normalizeDockerOutput(rawOutput)
     .split("\n")
@@ -151,7 +164,7 @@ export function parseDockerContainerList(rawOutput: string): DockerContainerInfo
           {
             id: parsed.ID,
             image: parsed.Image ?? "",
-            name: parsed.Names,
+            name: resolvePrimaryContainerName(parsed.Names),
             state: parsed.State ?? "",
             status: parsed.Status ?? "",
           },
