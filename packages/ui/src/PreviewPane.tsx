@@ -28,6 +28,7 @@ import type { FileBinaryPreview, FileMediaPreview, FileTextSlice } from "@zcode/
 import { TID_PREVIEW_PANE } from "@zcode/shared";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { usePptxFileWatch } from "@/hooks/usePptxFileWatch.js";
+import { useCodeCommentLabels } from "@/hooks/useCodeCommentLabels.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
 import {
@@ -642,23 +643,7 @@ export function PreviewPane({
   );
   const { canToggleCodeWrap, canToggleMarkdownView, canToggleSvgView, hasMoreMenu } =
     displayOptions;
-  const codeCommentLabels = useMemo(
-    () => ({
-      addComment: intl.formatMessage({ id: "codeViewer.comment.add" }),
-      addCommentTooltip: intl.formatMessage({
-        id: "codeViewer.comment.addTooltip",
-      }),
-      commentPlaceholder: intl.formatMessage({
-        id: "codeViewer.comment.placeholder",
-      }),
-      submitComment: intl.formatMessage({ id: "codeViewer.comment.submit" }),
-      cancelComment: intl.formatMessage({ id: "common.cancel" }),
-      deleteComment: intl.formatMessage({ id: "codeViewer.comment.delete" }),
-      commentLine: intl.formatMessage({ id: "codeViewer.comment.line" }),
-      commentRange: intl.formatMessage({ id: "codeViewer.comment.range" }),
-    }),
-    [intl],
-  );
+  const codeCommentLabels = useCodeCommentLabels();
   // PDF / PPTX 的标签与 dwf 的 workflow-artifact tab 共用一份（见该 hook 的注释）：
   // 两个 labels 接口都是必填全字段，各写一份漏的不会是类型错误，而是一句没翻译的文案。
   const pdfViewerLabels = usePdfViewerLabels();

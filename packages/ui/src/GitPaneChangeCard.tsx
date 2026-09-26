@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import type { GitPaneFileActionId } from "@/GitPane/fileActions.js";
+import { useGitPaneDiffComments } from "@/GitPane/useGitPaneDiffComments.js";
+import { getPathLeaf } from "@/lib/path.js";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -57,6 +59,8 @@ export function GitPaneChangeCard({
   onOpenFile,
   onRevealInFileManager,
   onRevealInFileTree,
+  commentWorkspace,
+  absolutePath,
 }: {
   change: GitPaneFileChange;
   contextMenuLabels: {
@@ -86,6 +90,9 @@ export function GitPaneChangeCard({
   onOpenFile?: (change: GitPaneFileChange) => void;
   onRevealInFileManager: (change: GitPaneFileChange) => void;
   onRevealInFileTree?: (change: GitPaneFileChange) => void;
+  /** 提供时富 diff 支持行评论。规范：docs/specs/git-review-pane-diff-comments.md */
+  commentWorkspace?: { workspacePath: string; workspaceIdentity?: string };
+  absolutePath: string;
 }) {
   const { intl } = useZCodeIntl();
   const diffPreviewPlan = useMemo(() => getGitPaneDiffPreviewPlan(diffState), [diffState]);
@@ -115,6 +122,24 @@ export function GitPaneChangeCard({
     diffState?.beforeContent,
     diffState?.path,
   ]);
+  const commentTarget = useMemo(
+    () =>
+      commentWorkspace &&
+      isExpanded &&
+      diffState?.availability === "patch" &&
+      diffPreviewPlan.kind !== "plain-text"
+        ? {
+            ...commentWorkspace,
+            sourcePath: absolutePath,
+            sourceTitle: getPathLeaf(absolutePath) || absolutePath,
+            beforeContent: diffState.beforeContent,
+            afterContent: diffState.afterContent,
+            patch: diffState.patch,
+          }
+        : null,
+    [absolutePath, commentWorkspace, diffPreviewPlan.kind, diffState, isExpanded],
+  );
+  const diffComments = useGitPaneDiffComments(commentTarget);
 
   return (
     <div className="w-full min-w-0">
@@ -267,6 +292,10 @@ export function GitPaneChangeCard({
                 diffClassName="block"
                 diffStyle={diffStyle}
                 wrapLongLines={codePreviewSettings.wrapLongLines}
+                options={diffComments.options}
+                lineAnnotations={diffComments.lineAnnotations}
+                renderAnnotation={diffComments.renderAnnotation}
+                selectedLines={diffComments.selectedLines}
                 fontSizePx={codePreviewSettings.fontSizePx}
                 lightTheme={codePreviewSettings.lightTheme}
                 darkTheme={codePreviewSettings.darkTheme}
@@ -285,6 +314,10 @@ export function GitPaneChangeCard({
                 diffClassName="block"
                 diffStyle={diffStyle}
                 wrapLongLines={codePreviewSettings.wrapLongLines}
+                options={diffComments.options}
+                lineAnnotations={diffComments.lineAnnotations}
+                renderAnnotation={diffComments.renderAnnotation}
+                selectedLines={diffComments.selectedLines}
                 fontSizePx={codePreviewSettings.fontSizePx}
                 lightTheme={codePreviewSettings.lightTheme}
                 darkTheme={codePreviewSettings.darkTheme}

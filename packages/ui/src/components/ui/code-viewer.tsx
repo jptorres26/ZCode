@@ -320,7 +320,7 @@ function formatCommentRange(labels: CodeCommentLabels, range: CodeCommentRange) 
     .replaceAll("{endLine}", String(normalizedRange.endLine));
 }
 
-function CommentDraft({
+export function CommentDraft({
   range,
   labels,
   value,

@@ -489,6 +489,11 @@ export function GitPane({
     [fileActions, resolveChangePath],
   );
 
+  const commentWorkspace = useMemo(
+    () => ({ workspacePath, workspaceIdentity }),
+    [workspaceIdentity, workspacePath],
+  );
+
   const handleOpenChangeInViewer = useCallback(
     (change: GitPaneFileChange) => {
       const path = resolveChangePath(change);
@@ -678,6 +683,8 @@ export function GitPane({
                       onCopyRelativePath={handleCopyRelativePath}
                       onOpenChange={handleExpandChange}
                       onOpenFile={onOpenCodeViewer ? handleOpenChangeInViewer : undefined}
+                      commentWorkspace={commentWorkspace}
+                      absolutePath={resolveChangePath(change)}
                       onRevealInFileManager={handleRevealChangeInFileManager}
                       onRevealInFileTree={
                         onRevealFileInTree ? handleRevealChangeInFileTree : undefined

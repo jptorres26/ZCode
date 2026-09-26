@@ -1,9 +1,9 @@
 "use client";
 
-import type { CSSProperties, HTMLAttributes } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { memo, useMemo } from "react";
 import type { BundledTheme } from "shiki";
-import type { FileContents, FileDiffOptions } from "@pierre/diffs";
+import type { DiffLineAnnotation, FileContents, FileDiffOptions } from "@pierre/diffs";
 import { MultiFileDiff, PatchDiff } from "@pierre/diffs/react";
 
 import { cn } from "@/components/lib/utils.js";
@@ -33,7 +33,10 @@ type DiffViewerMultiFileInput = {
 
 export type DiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> &
   (DiffViewerPatchInput | DiffViewerMultiFileInput) & {
-    options?: FileDiffOptions<undefined>;
+    options?: FileDiffOptions<unknown>;
+    /** 行内注解（如评论草稿）；元数据由调用方在 renderAnnotation 中自行收窄。 */
+    lineAnnotations?: DiffLineAnnotation<unknown>[];
+    renderAnnotation?: (annotation: DiffLineAnnotation<unknown>) => ReactNode;
     /** 统一 / 并排布局；`options` 中的 diffStyle 仍可覆盖。 */
     diffStyle?: "unified" | "split";
     /** 长行换行；关闭时横向滚动。 */
@@ -66,6 +69,8 @@ function DiffViewerComponent(props: DiffViewerProps) {
     diffClassName,
     fontSizePx = 12,
     selectedLines,
+    lineAnnotations,
+    renderAnnotation,
     className,
     style,
   } = props;
@@ -81,7 +86,7 @@ function DiffViewerComponent(props: DiffViewerProps) {
     }),
     [fontSizePx, style],
   );
-  const options = useMemo<FileDiffOptions<undefined>>(
+  const options = useMemo<FileDiffOptions<unknown>>(
     () => ({
       diffStyle,
       diffIndicators: "bars",
@@ -114,6 +119,8 @@ function DiffViewerComponent(props: DiffViewerProps) {
       options={options}
       disableWorkerPool={disableWorkerPool}
       selectedLines={selectedLines}
+      lineAnnotations={lineAnnotations}
+      renderAnnotation={renderAnnotation}
       className={cn("min-h-full w-full", diffClassName)}
       style={viewerStyle}
     />
@@ -124,6 +131,8 @@ function DiffViewerComponent(props: DiffViewerProps) {
       options={options}
       disableWorkerPool={disableWorkerPool}
       selectedLines={selectedLines}
+      lineAnnotations={lineAnnotations}
+      renderAnnotation={renderAnnotation}
       className={cn("min-h-full w-full", diffClassName)}
       style={viewerStyle}
     />
@@ -164,6 +173,8 @@ function omitPatchDiffProps({
   darkTheme: _darkTheme,
   themeType: _themeType,
   selectedLines: _selectedLines,
+  lineAnnotations: _lineAnnotations,
+  renderAnnotation: _renderAnnotation,
   className: _className,
   style: _style,
   ...divProps
@@ -184,6 +195,8 @@ function omitMultiFileDiffProps({
   darkTheme: _darkTheme,
   themeType: _themeType,
   selectedLines: _selectedLines,
+  lineAnnotations: _lineAnnotations,
+  renderAnnotation: _renderAnnotation,
   className: _className,
   style: _style,
   ...divProps
