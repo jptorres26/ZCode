@@ -52,3 +52,18 @@ test("ambiguous prefixes and empty or unknown targets do not pick a container", 
   assert.equal(matchedName("   "), "not-found");
   assert.equal(matchedName("missing-container"), "not-found");
 });
+
+test("untruncated docker ps output keeps the primary name, not link aliases", async () => {
+  const { parseDockerContainerList } = await import("../src/remote/docker-detect.js");
+  const line = (id: string, names: string) =>
+    JSON.stringify({ ID: id, Names: names, Image: "img", State: "running", Status: "Up" });
+  const containers = parseDockerContainerList(
+    [line(fullId("0123456789ab"), "db,web/db"), line(fullId("db0000000001"), "other")].join("\n"),
+  );
+  assert.deepEqual(
+    containers.map((c) => c.name),
+    ["db", "other"],
+  );
+  const result = matchDockerContainer(containers, "db");
+  assert.equal(result.status === "matched" ? result.container.name : result.status, "db");
+});
