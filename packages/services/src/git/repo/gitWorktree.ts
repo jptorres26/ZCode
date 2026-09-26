@@ -17,9 +17,15 @@ import { parseGitBranchMutationIssues } from "./gitCliHelpers.js";
 const GIT_WORKTREE_ADD_TIMEOUT_MS = 5 * 60_000;
 const MAX_WORKTREE_NAME_ATTEMPTS = 99;
 
+// Windows 保留设备名：按首个 "." 之前的部分判断，不区分大小写（与 workspaceRemovalSafety 的规则一致）。
+const WINDOWS_RESERVED_BASENAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+
 export function toWorktreeSlug(name: string): string {
   const slug = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
-  return slug || "worktree";
+  if (!slug) return "worktree";
+  // 修复原因：con、aux、com1 等是合法分支名，但在 Windows 上不能作为目录名，git worktree add 会失败。
+  // 修复依据：所有平台统一加前缀（追加后缀无效：CON.xxx 仍是保留名），目录名保持确定。
+  return WINDOWS_RESERVED_BASENAME.test(slug) ? `wt-${slug}` : slug;
 }
 
 /** 同一仓库的 worktree 放在同一目录下；哈希区分同名仓库。 */
@@ -161,10 +167,18 @@ export async function readManagedWorktree(context: {
   if (!main || !current || current.path === main.path) {
     return null;
   }
+  const status = await context.commandProvider.run({
+    cwd: current.path,
+    args: ["status", "--porcelain", "--untracked-files=normal"],
+    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+    maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+  });
   return {
     worktreePath: current.path,
     mainWorktreePath: main.path,
     branchName: current.branchName,
+    // 读取失败时按有改动处理：删除前必须经过“丢弃改动”的确认。
+    hasUncommittedChanges: status.exitCode !== 0 || status.stdout.trim().length > 0,
   };
 }
 
@@ -177,16 +191,8 @@ export async function removeManagedWorktree(context: {
   if (!worktree) {
     return { ok: false, reason: "not-managed" };
   }
-  if (!context.force) {
-    const status = await context.commandProvider.run({
-      cwd: worktree.worktreePath,
-      args: ["status", "--porcelain", "--untracked-files=normal"],
-      timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
-    });
-    if (status.exitCode !== 0 || status.stdout.trim().length > 0) {
-      return { ok: false, reason: "dirty" };
-    }
+  if (!context.force && worktree.hasUncommittedChanges) {
+    return { ok: false, reason: "dirty" };
   }
   // 在主检出中执行，避免在待删除目录内运行；路径为 git 自身给出的绝对路径，不会被当成选项。
   const result = await context.commandProvider.run({

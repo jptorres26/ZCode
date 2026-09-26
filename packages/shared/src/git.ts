@@ -214,6 +214,8 @@ export interface GitManagedWorktree {
   worktreePath: string;
   mainWorktreePath: string;
   branchName: string | null;
+  /** 读取时的状态：有未提交改动（含未跟踪文件）。删除前据此先确认，再释放运行时。 */
+  hasUncommittedChanges: boolean;
 }
 
 export interface GitRemoveWorktreeRequest extends GitRepositoryRequest {

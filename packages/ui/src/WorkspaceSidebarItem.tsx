@@ -375,10 +375,11 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     return true;
   }, [confirmDialog, intl, workspaceKeyForLog]);
 
-  const releaseWorkspaceEntry = useCallback(() => {
+  // 返回的 Promise 在 runtime 释放完成后 resolve（失败只记录），供删除 worktree 在删目录前等待。
+  const releaseWorkspaceEntry = useCallback((): Promise<void> => {
     const workspaceKey = workspaceKeyForLog;
     closeTab(tab.id);
-    releaseWorkspaceRuntimeAfterProjectRemoval({
+    const runtimeReleased = releaseWorkspaceRuntimeAfterProjectRemoval({
       tab: {
         workspacePath: tab.workspacePath,
         workspaceIdentity: tab.workspaceIdentity,
@@ -417,6 +418,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
           });
         });
     }
+    return runtimeReleased;
   }, [
     baseServices.fileService,
     closeTab,
@@ -437,7 +439,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     if (!(await confirmRemovingRunningWorkspace())) {
       return;
     }
-    releaseWorkspaceEntry();
+    void releaseWorkspaceEntry();
   }, [confirmRemovingRunningWorkspace, isExpanded, releaseWorkspaceEntry, workspaceKeyForLog]);
 
   // 删除 ZCode 创建的 worktree。规范：docs/specs/git-worktree-task.md

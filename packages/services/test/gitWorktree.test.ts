@@ -51,6 +51,19 @@ async function worktreeCount(repo: string): Promise<number> {
 test("slugs keep safe characters and the container is keyed by the repo root", () => {
   assert.equal(toWorktreeSlug("feature/login page"), "feature-login-page");
   assert.equal(toWorktreeSlug("..//"), "worktree");
+  // Windows 保留设备名（含扩展名形式）加前缀，普通名称不变
+  for (const [branch, slug] of [
+    ["con", "wt-con"],
+    ["AUX", "wt-AUX"],
+    ["com1", "wt-com1"],
+    ["lpt9.fix", "wt-lpt9.fix"],
+    ["nul/x", "nul-x"],
+    ["console", "console"],
+    ["com10", "com10"],
+    ["fix/con", "fix-con"],
+  ]) {
+    assert.equal(toWorktreeSlug(branch), slug, branch);
+  }
   const container = getWorktreeContainerDir("/wt", "/home/me/my repo");
   assert.match(container, /^\/wt\/my-repo-[0-9a-f]{8}$/);
   assert.notEqual(container, getWorktreeContainerDir("/wt", "/other/my repo"));
@@ -171,6 +184,7 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
       worktreePath: created.worktreePath,
       mainWorktreePath: repo,
       branchName: "feature/x",
+      hasUncommittedChanges: false,
     });
   });
 });
@@ -182,6 +196,10 @@ test("removing a managed worktree needs force when dirty and keeps the branch", 
     assert.equal(created.ok, true);
     if (!created.ok) return;
     await writeFile(join(created.worktreePath, "scratch.txt"), "wip\n");
+    assert.equal(
+      (await gitRepo.getManagedWorktree(created.workspacePath))?.hasUncommittedChanges,
+      true,
+    );
 
     assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, false), {
       ok: false,

@@ -809,6 +809,10 @@ const zhCN: Record<string, string> = {
   "git.fileAction.discardConfirmDescription": "此操作无法撤销。",
   "git.fileAction.discardConfirmDeletesDescription":
     "其中 {count} 个新文件会从磁盘删除。此操作无法撤销。",
+  "git.fileAction.discardConfirmDeletesFoldersOnlyDescription":
+    "其中 {folderCount} 个未跟踪目录（连同目录内全部内容）会从磁盘删除。此操作无法撤销。",
+  "git.fileAction.discardConfirmDeletesFoldersDescription":
+    "其中 {folderCount} 个未跟踪目录（连同目录内全部内容）和 {fileCount} 个其它新文件会从磁盘删除。此操作无法撤销。",
   "git.fileAction.failed": "Git 操作失败：{message}",
   "git.action.commit": "提交",
   "git.action.showTree": "显示文件树",
@@ -917,6 +921,9 @@ const zhCN: Record<string, string> = {
   "git.worktree.delete.forceConfirm": "仍然删除",
   "git.worktree.delete.done": "已删除 worktree，分支 {branchName} 已保留。",
   "git.worktree.delete.failed": "无法删除 worktree：{error}",
+  "git.worktree.delete.failedAfterRelease":
+    "项目已从侧栏移除，但 worktree 目录 {path} 未能删除：{error}。目录与分支 {branchName} 均已保留。",
+  "git.worktree.delete.retry": "重试",
   "git.worktree.createAction": "在新 worktree 中开始...",
   "git.worktree.dialog.title": "在新 worktree 中开始",
   "git.worktree.dialog.description":
