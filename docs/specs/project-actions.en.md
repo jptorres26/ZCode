@@ -29,7 +29,8 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
   - `command` may not contain control or invisible characters: Unicode `Cc` (C0, DEL and C1,
     including newlines and carriage returns), `Cf` (including the bidi controls U+202A–U+202E and
     U+2066–U+2069 and zero-width characters), the `Zl`/`Zp` line and paragraph separators,
-    `Default_Ignorable_Code_Point` characters (such as Hangul fillers) and the braille blank U+2800, and
+    `Default_Ignorable_Code_Point` characters (such as Hangul fillers; the emoji variation selectors
+    U+FE00–U+FE0F only change a glyph and stay allowed, as in `⚠️`) and the braille blank U+2800, and
     no run of more than 16 whitespace characters. So the menu shows everything a single input will
     run: a second command can't hide after a newline, bidi controls can't make the displayed order
     differ from what runs, and a wall of blanks can't push the rest of the command out of view.
