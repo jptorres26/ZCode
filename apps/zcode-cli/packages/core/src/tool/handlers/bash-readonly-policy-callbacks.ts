@@ -45,6 +45,38 @@ function jqFilterIsDangerous(filter: string): boolean {
   );
 }
 
+const UNIQ_OPTIONS_WITH_SEPARATE_VALUE = new Set([
+  "-f",
+  "-s",
+  "-w",
+  "--skip-fields",
+  "--skip-chars",
+  "--check-chars",
+]);
+
+/**
+ * 修复原因：uniq 曾以 allowAnyArgs 放行，但 GNU uniq 的第二个操作数是输出文件（`uniq in out` 会创建/覆盖 out），
+ * 只读策略因此会自动放行一次写文件。
+ * 修复依据：统计位置参数（跳过带独立取值的选项，`--` 之后全部视为操作数），超过一个即视为危险。
+ */
+export function uniqCommandIsDangerous(_commandText: string, args: readonly string[]): boolean {
+  let operands = 0;
+  let afterDoubleDash = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (!afterDoubleDash && arg === "--") {
+      afterDoubleDash = true;
+      continue;
+    }
+    if (!afterDoubleDash && arg.startsWith("-") && arg !== "-") {
+      if (UNIQ_OPTIONS_WITH_SEPARATE_VALUE.has(arg)) index += 1;
+      continue;
+    }
+    operands += 1;
+  }
+  return operands > 1;
+}
+
 export function dateCommandIsDangerous(_commandText: string, args: readonly string[]): boolean {
   const valueFlags = new Set(["-d", "--date", "-r", "--reference", "--rfc-3339"]);
   for (let index = 0; index < args.length; ) {

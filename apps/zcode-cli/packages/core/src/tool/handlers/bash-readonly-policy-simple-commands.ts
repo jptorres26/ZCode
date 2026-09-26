@@ -10,6 +10,7 @@ import {
   ssCommandIsDangerous,
   testCommandIsDangerous,
   tputCommandIsDangerous,
+  uniqCommandIsDangerous,
   xargsCommandIsDangerous,
 } from "./bash-readonly-policy-callbacks.js";
 import {
@@ -36,6 +37,7 @@ import {
   TEST_SAFE_FLAGS,
   TPUT_SAFE_FLAGS,
   TREE_SAFE_FLAGS,
+  UNIQ_SAFE_FLAGS,
   WC_SAFE_FLAGS,
   XARGS_SAFE_FLAGS,
 } from "./bash-readonly-policy-flags.js";
@@ -141,7 +143,10 @@ export const READONLY_COMMAND_POLICIES = new Map<string, BashReadonlyCommandPoli
   ["tr", { allowAnyArgs: true }],
   ["tree", { safeFlags: TREE_SAFE_FLAGS }],
   ["true", { commandOnly: true }],
-  ["uniq", { allowAnyArgs: true }],
+  [
+    "uniq",
+    { safeFlags: UNIQ_SAFE_FLAGS, additionalCommandIsDangerousCallback: uniqCommandIsDangerous },
+  ],
   ["uname", { allowAnyArgs: true }],
   ["wc", { safeFlags: WC_SAFE_FLAGS }],
   ["which", { allowAnyArgs: true }],
