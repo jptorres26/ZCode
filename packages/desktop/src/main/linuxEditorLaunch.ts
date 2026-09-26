@@ -49,7 +49,11 @@ export async function launchLinuxEditor(
   directory: string,
 ): Promise<void> {
   if (def.kind === "terminal") {
-    await launchDetached(def.commandPath, getLinuxTerminalArgs(def.programName, directory), directory);
+    await launchDetached(
+      def.commandPath,
+      getLinuxTerminalArgs(def.programName, directory),
+      directory,
+    );
     return;
   }
   await launchDetached(def.commandPath, [path]);

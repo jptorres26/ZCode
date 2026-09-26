@@ -320,7 +320,12 @@ export async function openInEditor(
       ? (await getLinuxEditorDefs()).find((editor) => editor.id === editorId)
       : undefined;
   const def = linuxDef
-    ? { id: linuxDef.id, name: linuxDef.name, appPath: linuxDef.commandPath, command: linuxDef.commandPath }
+    ? {
+        id: linuxDef.id,
+        name: linuxDef.name,
+        appPath: linuxDef.commandPath,
+        command: linuxDef.commandPath,
+      }
     : getEditorDefsForCurrentPlatform().find((editor) => editor.id === editorId);
   if (!def) {
     return { success: false, error: `unknown editor: ${editorId}` };

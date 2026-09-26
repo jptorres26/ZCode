@@ -106,7 +106,13 @@ test("desktop entries map program names to icons", async () => {
   assert.equal(index.get("gnome-terminal"), "org.gnome.Terminal");
 
   const iconUrl = await resolveLinuxEditorIconDataUrl(
-    { id: "vscode", name: "VS Code", kind: "editor", commandPath: "/usr/bin/code", programName: "code" },
+    {
+      id: "vscode",
+      name: "VS Code",
+      kind: "editor",
+      commandPath: "/usr/bin/code",
+      programName: "code",
+    },
     { dataDirs: ["/usr/share"], iconIndex: index, fs },
   );
   assert.equal(iconUrl, `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`);
