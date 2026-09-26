@@ -20,6 +20,8 @@ import type {
   GitCreateWorktreeRequest,
   GitCreateWorktreeResult,
   GitManagedWorktree,
+  GitRemoveWorktreeLeftoverRequest,
+  GitRemoveWorktreeLeftoverResult,
   GitRemoveWorktreeRequest,
   GitRemoveWorktreeResult,
   GitPushRequest,
@@ -62,6 +64,10 @@ export interface IGitService {
   getManagedWorktree(params: GitRepositoryRequest): Promise<GitManagedWorktree | null>;
   /** 删除 ZCode 创建的 worktree（保留分支）。 */
   removeWorktree(params: GitRemoveWorktreeRequest): Promise<GitRemoveWorktreeResult>;
+  /** 清理 removeWorktree 返回 leftover 后剩下的目录（只限 ZCode worktrees 目录下已失效的检出）。 */
+  removeWorktreeLeftover(
+    params: GitRemoveWorktreeLeftoverRequest,
+  ): Promise<GitRemoveWorktreeLeftoverResult>;
   getIdentity(params: GitRepositoryRequest): Promise<GitIdentity>;
   refresh(params: GitRefreshRequest): Promise<GitRefreshResult>;
 }

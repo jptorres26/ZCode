@@ -43,8 +43,13 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 
 ## 删除 worktree
 
-- 只允许删除 **ZCode 创建的** worktree：workspace 所在检出是链接 worktree（不是主检出），且其根目录位于
-  `<ZCode 数据目录>/worktrees/` 下。用户自己创建的仓库或 worktree 不提供删除入口。
+- 只允许删除 **ZCode 创建的** worktree：workspace 所在检出是链接 worktree（不是主检出），其根目录位于
+  `<ZCode 数据目录>/worktrees/` 下，**且带有 ZCode 创建标记**。用户自己创建的仓库或 worktree（包括手动放进该目录的）
+  不提供删除入口。
+  - 创建标记：`createWorktree` 成功后在该 worktree 自己的 Git 管理目录（`git rev-parse --absolute-git-dir`，即
+    `<common-dir>/worktrees/<name>`）写入 `zcode-worktree.json`（`{ createdBy: "zcode", worktreePath }`）。
+    该目录不属于仓库内容，克隆或检出无法伪造；`git worktree remove`/`prune` 时随之删除。写入失败时 worktree 仍可用，
+    只是不提供删除入口。读取时要求标记存在、`createdBy` 为 `zcode` 且 `worktreePath` 的真实路径与当前检出一致。
 - `IGitService.getManagedWorktree({ workspacePath })`：满足上述条件时返回
   `{ worktreePath, mainWorktreePath, branchName, hasUncommittedChanges }`，否则 `null`（主检出与分支名取自
   `git worktree list --porcelain`；`hasUncommittedChanges` 为读取时 `git status` 是否有改动（含未跟踪文件），
@@ -52,23 +57,35 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 - `IGitService.removeWorktree({ workspacePath, force? })`：
   - 不满足条件 → `{ ok: false, reason: "not-managed" }`；
   - 未指定 `force` 且有未提交改动 → `{ ok: false, reason: "dirty" }`，不删除；
-  - 在主检出中执行 `git worktree remove [--force] <worktreePath>`；失败 → `{ ok: false, reason: "failed", detail }`；
+  - 在主检出中执行 `git worktree remove [--force] <worktreePath>`；失败时再查登记：仍登记 →
+    `{ ok: false, reason: "failed", detail }`；登记已消失（目录删除中途失败时 git 可能已删掉管理目录，常见于 Windows
+    目录占用）→ `{ ok: false, reason: "leftover", detail }`；
   - 成功 → `{ ok: true, mainWorktreePath, branchName }`。**分支与其提交保留**，只删除目录与 worktree 登记。
+- `IGitService.removeWorktreeLeftover({ worktreePath })`：清理 `leftover` 剩下的目录。只允许删除
+  `<ZCode 数据目录>/worktrees/<仓库目录>/<worktree 目录>` 这一层、且已不是有效 Git 检出（没有 `.git`，或 `.git` 文件
+  指向的管理目录已不存在）的目录，否则返回 `not-leftover`；目录已不存在视为成功。
+- `ITerminalService.disposeUnderPath({ path })`：结束所有初始 cwd 位于该目录（含自身）下的终端，并在进程退出后 resolve
+  （等待上限 5 秒，只防止删除流程无限挂起）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
 - 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
   2. 破坏性确认：说明将删除的目录、保留的分支；
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以
      `force` 删除。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
-  4. 执行与“移除”相同的收尾（关闭标签，终端随 workspace 关闭回收；释放运行时；失效任务缓存），并**等待运行时释放完成**；
+  4. 调用 `disposeUnderPath(worktreePath)` 并**等待终端退出**；再执行与“移除”相同的收尾（关闭标签；释放运行时；
+     失效任务缓存），并**等待运行时释放完成**。删除流程不做 Windows 保留名扫描（目录即将删除，扫描还会在删除时占用目录）。
   5. 再调用 `removeWorktree`。先释放后删除：Windows 上以该目录为 cwd 的 Agent/终端进程会占用目录，
      先删除会失败，甚至只删掉一部分文件。
-  6. 成功提示分支已保留；失败时项目已从侧栏移除，toast 说明目录与分支均保留，并提供“重试”（再次调用
-     `removeWorktree`，由用户触发，不做定时重试）。
+  6. 结果（侧栏行此时已卸载，后续确认与重试都通过 toast 操作完成，由用户触发，不做定时重试）：
+     - 成功：提示分支已保留；
+     - `dirty`（确认之后又出现了改动，用户没有同意丢弃）：提示未删除，提供“仍然删除”（以 `force` 重试）；
+     - `leftover`：提示目录未能完全删除、分支已保留，“重试”改为调用 `removeWorktreeLeftover`；
+     - 其它失败：同样提示，“重试”再次调用 `removeWorktree`。
 
 ```mermaid
 sequenceDiagram
   participant U as 用户
   participant H as useManagedWorktreeDeletion
+  participant T as ITerminalService
   participant S as WorkspaceSidebarItem（移除收尾）
   participant R as zcodeTaskService
   participant G as IGitService
@@ -76,12 +93,13 @@ sequenceDiagram
   H->>U: 运行中确认 → 破坏性确认
   H->>G: getManagedWorktree（当前状态）
   H->>U: 有改动时：丢弃改动确认
-  H->>S: releaseWorkspaceEntry()
-  S->>S: closeTab（终端回收）、失效任务缓存
+  H->>T: disposeUnderPath(worktreePath)（等待终端退出）
+  H->>S: releaseWorkspaceEntry({ scanReservedNames: false })
+  S->>S: closeTab、失效任务缓存
   S->>R: releaseWorkspacePreparation（等待完成）
   H->>G: removeWorktree(force = 有改动)
-  G-->>H: ok / failed
-  H->>U: 成功提示 / 失败 toast + 重试
+  G-->>H: ok / dirty / leftover / failed
+  H->>U: 成功提示 / toast：仍然删除（force）/ 重试（removeWorktreeLeftover 或 removeWorktree）
 ```
 
 - 文案 `workspaceSidebar.deleteWorktree` 与 `git.worktree.delete.*`，`en-US` 与 `zh-CN` 同步提供。
@@ -89,7 +107,7 @@ sequenceDiagram
 ## 创建后的 setup 命令
 
 - 配置：源 workspace 根目录 `.zcode/config.json` 的 `worktree.setup`（字符串）。规则与项目操作的 `command` 相同：
-  首尾空白去掉后 1–4000 字符，不含控制字符或不可见格式字符（与项目操作相同的 `Cc`/`Cf`/`Zl`/`Zp` 规则，含换行与双向控制符）。由 `@zcode/shared` 的
+  首尾空白去掉后 1–4000 字符，不含控制字符或不可见字符（与项目操作 `command` 相同的规则，含换行、双向控制符、默认不可见字符与超长连续空白）。由 `@zcode/shared` 的
   `parseWorktreeSetupConfig` 解析；与 `actions` 相互独立，一方无效不影响另一方。
 
   ```json
@@ -106,6 +124,8 @@ sequenceDiagram
   `useAppPanels` 在当前 workspace 身份 key 变化后取出（取出即删除），交给项目操作的 `handleRunProjectAction`：
   在新 workspace 的右侧面板新建终端标签（cwd 为新 workspace 路径），首条输入执行该命令。
   命令不进入标签状态，刷新或恢复不会重复执行。
+- 草稿转正：Setup 终端在草稿态打开（归属草稿）。v4 会话创建（`onSessionCreated`）时，若当前处于草稿，先把该 workspace
+  中归属草稿的 tab 交给新会话（`adoptDraftSidePaneTabs`），再切到新会话，因此发出首条消息后 Setup 终端仍然可见。
 - setup 命令的成败不影响 worktree 与草稿：输出留在终端，用户可以中断、重跑或关闭。
 
 ```mermaid
@@ -134,9 +154,15 @@ sequenceDiagram
 
 - `packages/services/test/gitWorktree.test.ts`（真实临时仓库）：删除只对 ZCode 创建的 worktree 生效、未提交改动需 `force`、
   删除后目录消失且分支保留；创建成功且检出新分支、子目录 workspace 映射、
-  重名目录追加后缀、Windows 保留名加前缀、`hasUncommittedChanges` 反映未提交改动、已存在分支与非法分支名返回 issue 且不创建目录、未提交改动不带入。
+  重名目录追加后缀、Windows 保留名加前缀、`hasUncommittedChanges` 反映未提交改动、已存在分支与非法分支名返回 issue 且不创建目录、未提交改动不带入；
+  手动放进 worktrees 目录的 worktree（无创建标记）不可删除；删除中途失败且登记消失时返回 `leftover`，
+  `removeWorktreeLeftover` 只清理第二层的失效检出。
+- `packages/services/test/terminalDisposeUnderPath.test.ts`：按目录匹配终端（含子目录，不含同名前缀的兄弟目录）。
+- `packages/ui/test/sidePaneDraftAdoption.test.ts`：草稿态 tab 转正后归属新会话，其它会话与其它 workspace 不受影响。
 - `packages/ui/test/projectActions.test.ts`：`worktree.setup` 解析（缺失、有效、非字符串、控制字符、与 `actions`
   互不影响）与 `pendingWorkspaceSetup` 一次性语义。
 - Web 开发服务 + Playwright：在草稿分支菜单中选择“在新 worktree 中开始…”，输入分支名后打开新 workspace，
   草稿文本随之转移，`git worktree list` 显示新条目；配置 `worktree.setup` 时对话框显示完整命令，勾选创建后
-  新 workspace 的右侧面板出现 Setup 终端并执行命令，取消勾选则不运行。
+  新 workspace 的右侧面板出现 Setup 终端并执行命令，取消勾选则不运行；发出首条消息后 Setup 终端仍然可见。
+  删除时以该 worktree 为 cwd 的进程在删除前全部退出；用 `chattr +i` 锁定其中一个文件模拟删除中途失败：
+  toast 提示未完全删除，解锁后“重试”删除剩余目录，分支保留。

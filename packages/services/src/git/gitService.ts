@@ -330,6 +330,10 @@ export function createGitService(options?: {
       return await repo.removeWorktree(params.workspacePath, params.force === true);
     },
 
+    async removeWorktreeLeftover(params) {
+      return await repo.removeWorktreeLeftover(params.worktreePath);
+    },
+
     async getIdentity(params) {
       return await repo.getIdentity(params.workspacePath);
     },

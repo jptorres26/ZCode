@@ -60,7 +60,12 @@ import {
 } from "./gitCliTypes.js";
 import { discardGitPaths, readStagedRenameOrigins, unstageGitPaths } from "./gitPathMutations.js";
 import { readGitPullRequestLink } from "./gitPullRequestLinkReader.js";
-import { addGitWorktree, readManagedWorktree, removeManagedWorktree } from "./gitWorktree.js";
+import {
+  addGitWorktree,
+  readManagedWorktree,
+  removeLeftoverWorktreeDir,
+  removeManagedWorktree,
+} from "./gitWorktree.js";
 import { getZCodeDataRootDir } from "../../paths.js";
 
 export type {
@@ -1748,6 +1753,13 @@ export function createGitCliRepo(options?: {
         invalidate(workspacePath);
       }
       return result;
+    },
+
+    async removeWorktreeLeftover(worktreePath: string) {
+      return await removeLeftoverWorktreeDir({
+        worktreePath,
+        worktreesRootDir: resolveWorktreesRootDir(),
+      });
     },
 
     async getIdentity(workspacePath: string): Promise<GitIdentity> {

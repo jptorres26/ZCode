@@ -9,6 +9,7 @@ import type {
   GitPullRequestLink,
   GitCreateWorktreeResult,
   GitManagedWorktree,
+  GitRemoveWorktreeLeftoverResult,
   GitRemoveWorktreeResult,
   GitPushResult,
   GitRepositorySummary,
@@ -106,6 +107,7 @@ export interface GitCliRepo {
   createWorktree(workspacePath: string, branchName: string): Promise<GitCreateWorktreeResult>;
   getManagedWorktree(workspacePath: string): Promise<GitManagedWorktree | null>;
   removeWorktree(workspacePath: string, force: boolean): Promise<GitRemoveWorktreeResult>;
+  removeWorktreeLeftover(worktreePath: string): Promise<GitRemoveWorktreeLeftoverResult>;
   getIdentity(workspacePath: string): Promise<GitIdentity>;
 }
 

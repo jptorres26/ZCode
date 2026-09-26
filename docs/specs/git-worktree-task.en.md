@@ -57,8 +57,15 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
 ## Deleting a worktree
 
 - Only worktrees **created by ZCode** can be deleted: the workspace's checkout is a linked worktree (not
-  the main checkout) and its root is under `<ZCode data dir>/worktrees/`. Repositories or worktrees the
-  user created themselves get no delete entry.
+  the main checkout), its root is under `<ZCode data dir>/worktrees/`, **and it carries ZCode's creation
+  marker**. Repositories or worktrees the user created themselves (including ones placed in that folder
+  by hand) get no delete entry.
+  - Creation marker: after `createWorktree` succeeds, `zcode-worktree.json` (`{ createdBy: "zcode",
+worktreePath }`) is written to that worktree's own Git admin folder (`git rev-parse
+--absolute-git-dir`, i.e. `<common-dir>/worktrees/<name>`). That folder isn't repository content,
+    so a clone or checkout can't forge it, and `git worktree remove`/`prune` delete it with the worktree.
+    If writing fails, the worktree still works but gets no delete entry. Reading requires the marker to
+    exist, `createdBy` to be `zcode`, and the real path of `worktreePath` to match the current checkout.
 - `IGitService.getManagedWorktree({ workspacePath })` returns `{ worktreePath, mainWorktreePath,
 branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null` (the main checkout
   and branch come from `git worktree list --porcelain`; `hasUncommittedChanges` says whether
@@ -67,10 +74,20 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
 - `IGitService.removeWorktree({ workspacePath, force? })`:
   - Conditions not met → `{ ok: false, reason: "not-managed" }`.
   - Without `force`, uncommitted changes → `{ ok: false, reason: "dirty" }`, and nothing is deleted.
-  - Runs `git worktree remove [--force] <worktreePath>` in the main checkout; failure →
-    `{ ok: false, reason: "failed", detail }`.
+  - Runs `git worktree remove [--force] <worktreePath>` in the main checkout. On failure it checks the
+    registration again: still registered → `{ ok: false, reason: "failed", detail }`; registration gone
+    (when deleting the folder fails midway, git may already have removed the admin folder, typically
+    because of a Windows folder lock) → `{ ok: false, reason: "leftover", detail }`.
   - Success → `{ ok: true, mainWorktreePath, branchName }`. **The branch and its commits are kept**;
     only the folder and the worktree registration are removed.
+- `IGitService.removeWorktreeLeftover({ worktreePath })` cleans up what a `leftover` left behind. It only
+  deletes a folder exactly at `<ZCode data dir>/worktrees/<repo folder>/<worktree folder>` that is no
+  longer a live Git checkout (no `.git`, or a `.git` file pointing at an admin folder that no longer
+  exists); anything else returns `not-leftover`. A folder that no longer exists counts as success.
+- `ITerminalService.disposeUnderPath({ path })` ends every terminal whose starting cwd is that folder or
+  inside it, and resolves once their processes have exited (with a 5-second cap that only keeps the
+  delete flow from hanging). The terminal service owns every PTY, covering the side pane and the bottom
+  terminal.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
   `getManagedWorktree` returns a value (queried when the menu opens).
   1. If the workspace has a running conversation, the existing "Remove" confirmation for running
@@ -79,19 +96,27 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   3. It calls `getManagedWorktree` again for the current state. With uncommitted changes, a second
      confirmation says they will be lost for good, and confirming deletes with `force`. **Every
      confirmation happens before anything is released**, so cancelling at any step has no effect.
-  4. It does the same cleanup as "Remove" (close the tab, which disposes its terminals; release the
-     runtime; invalidate the task cache) and **waits for the runtime release to finish**.
+  4. It calls `disposeUnderPath(worktreePath)` and **waits for the terminals to exit**, then does the
+     same cleanup as "Remove" (close the tab, release the runtime, invalidate the task cache) and
+     **waits for the runtime release to finish**. The delete flow skips the Windows reserved-name scan:
+     the folder is about to go, and scanning it would hold it open during deletion.
   5. Only then does it call `removeWorktree`. Release comes first because on Windows an Agent or
      terminal process whose cwd is inside the folder locks it, so removing first fails or deletes only
      some of the files.
-  6. On success it says the branch was kept. On failure the project is already gone from the sidebar;
-     a toast says the folder and branch are kept and offers "Retry", which calls `removeWorktree`
-     again when the user clicks it (no timed retry).
+  6. Outcomes (the sidebar row has unmounted by now, so follow-up confirmations and retries are toast
+     actions the user clicks; there is no timed retry):
+     - Success: says the branch was kept.
+     - `dirty` (changes appeared after the confirmation, which the user didn't agree to discard): says
+       nothing was deleted and offers "Delete anyway", which retries with `force`.
+     - `leftover`: says the folder couldn't be fully deleted and the branch is kept; "Retry" calls
+       `removeWorktreeLeftover`.
+     - Any other failure: the same message; "Retry" calls `removeWorktree` again.
 
 ```mermaid
 sequenceDiagram
   participant U as User
   participant H as useManagedWorktreeDeletion
+  participant T as ITerminalService
   participant S as WorkspaceSidebarItem (Remove cleanup)
   participant R as zcodeTaskService
   participant G as IGitService
@@ -99,12 +124,13 @@ sequenceDiagram
   H->>U: running confirmation → destructive confirmation
   H->>G: getManagedWorktree (current state)
   H->>U: if changes: discard confirmation
-  H->>S: releaseWorkspaceEntry()
-  S->>S: closeTab (terminals disposed), invalidate task cache
+  H->>T: disposeUnderPath(worktreePath) (wait for terminals to exit)
+  H->>S: releaseWorkspaceEntry({ scanReservedNames: false })
+  S->>S: closeTab, invalidate task cache
   S->>R: releaseWorkspacePreparation (awaited)
   H->>G: removeWorktree(force = has changes)
-  G-->>H: ok / failed
-  H->>U: success toast / failure toast + Retry
+  G-->>H: ok / dirty / leftover / failed
+  H->>U: success / toast: Delete anyway (force) / Retry (removeWorktreeLeftover or removeWorktree)
 ```
 
 - Strings: `workspaceSidebar.deleteWorktree` and `git.worktree.delete.*`, in both `en-US` and `zh-CN`.
@@ -113,7 +139,8 @@ sequenceDiagram
 
 - Configuration: `worktree.setup` (a string) in the source workspace's root `.zcode/config.json`. Same
   rules as a project action's `command`: 1–4000 characters after trimming, no control or invisible
-  format characters (the same `Cc`/`Cf`/`Zl`/`Zp` rule, including newlines and bidi controls). Parsed by `parseWorktreeSetupConfig` in `@zcode/shared`; independent
+  characters (the same rule as a project action `command`, including newlines, bidi controls,
+  default-ignorable characters and long whitespace runs). Parsed by `parseWorktreeSetupConfig` in `@zcode/shared`; independent
   of `actions`, so one being invalid doesn't affect the other.
 
   ```json
@@ -135,6 +162,10 @@ sequenceDiagram
   it) and passes it to the project actions handler `handleRunProjectAction`: a new terminal tab in
   the new workspace's side pane (cwd is the new workspace path) runs the command as its first input.
   The command never enters tab state, so a reload or restore doesn't run it again.
+- Draft promotion: the Setup terminal opens while the new workspace is a draft (owned by the draft).
+  When a v4 session is created (`onSessionCreated`) while the workspace is in its draft, the draft's
+  tabs in that workspace are handed to the new session (`adoptDraftSidePaneTabs`) before switching to
+  it, so the Setup terminal stays visible after the first message.
 - The setup command's outcome doesn't affect the worktree or the draft: its output stays in the
   terminal, where the user can interrupt, re-run or close it.
 
@@ -168,11 +199,20 @@ sequenceDiagram
   checks out the new branch; subdirectory workspace mapping; a suffix when the directory exists; a prefix for Windows reserved names; `hasUncommittedChanges`
   reflecting uncommitted changes; an
   existing branch and an invalid branch name return issues without creating a directory; uncommitted
-  changes are not carried over.
+  changes are not carried over; a worktree placed in the worktrees folder by hand (no creation marker) can't be deleted; a removal
+  that fails midway after the registration is gone returns `leftover`, and `removeWorktreeLeftover`
+  only cleans a dead checkout at the second level.
+- `packages/services/test/terminalDisposeUnderPath.test.ts`: terminals are matched by folder (including
+  subfolders, excluding siblings that share a prefix).
+- `packages/ui/test/sidePaneDraftAdoption.test.ts`: draft tabs move to the new session on promotion;
+  other sessions and other workspaces are unaffected.
 - `packages/ui/test/projectActions.test.ts`: `worktree.setup` parsing (missing, valid, not a string,
   control characters, independent of `actions`) and the one-shot semantics of `pendingWorkspaceSetup`.
 - Web dev server + Playwright: choose "Start in new worktree…" in the draft branch menu, enter a
   branch name, and the new workspace opens with the draft text carried over; `git worktree list`
   shows the new entry. With `worktree.setup` configured, the dialog shows the full command; creating
   with the box checked opens a Setup terminal in the new workspace's side pane that runs it, and
-  unchecking it runs nothing.
+  unchecking it runs nothing; the Setup terminal stays visible after the first message. On delete,
+  every process whose cwd is inside the worktree exits before removal; with one file locked by
+  `chattr +i` to simulate a midway failure, a toast says the folder wasn't fully deleted, and after
+  unlocking, "Retry" removes what's left while the branch is kept.

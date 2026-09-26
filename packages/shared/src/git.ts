@@ -225,7 +225,18 @@ export interface GitRemoveWorktreeRequest extends GitRepositoryRequest {
 
 export type GitRemoveWorktreeResult =
   | { ok: true; mainWorktreePath: string; branchName: string | null }
-  | { ok: false; reason: "not-managed" | "dirty" | "failed"; detail?: string };
+  | { ok: false; reason: "not-managed" | "dirty" | "failed"; detail?: string }
+  /** git 已撤销登记但目录未能删净（常见于 Windows 目录占用）；用 removeWorktreeLeftover 清理剩余目录。 */
+  | { ok: false; reason: "leftover"; detail?: string };
+
+export interface GitRemoveWorktreeLeftoverRequest {
+  /** 之前 getManagedWorktree 返回的 worktreePath。 */
+  worktreePath: string;
+}
+
+export type GitRemoveWorktreeLeftoverResult =
+  | { ok: true }
+  | { ok: false; reason: "not-leftover" | "failed"; detail?: string };
 
 export interface GitPathMutationRequest extends GitRepositoryRequest {
   paths: string[];

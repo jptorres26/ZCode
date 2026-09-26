@@ -993,7 +993,9 @@ const enUS: Record<string, string> = {
   "git.worktree.delete.done": "Worktree deleted. The branch {branchName} is kept.",
   "git.worktree.delete.failed": "Couldn't delete the worktree: {error}",
   "git.worktree.delete.failedAfterRelease":
-    "The project was removed from the sidebar, but its worktree folder {path} couldn't be deleted: {error}. The folder and the branch {branchName} are kept.",
+    "The project was removed from the sidebar, but its worktree folder {path} couldn't be fully deleted: {error}. The branch {branchName} is kept. Retry to remove what's left.",
+  "git.worktree.delete.dirtyAfterRelease":
+    "New uncommitted changes appeared in {path} after you confirmed, so it wasn't deleted. The project was removed from the sidebar and the branch {branchName} is kept.",
   "git.worktree.delete.retry": "Retry",
   "git.worktree.createAction": "Start in new worktree...",
   "git.worktree.dialog.title": "Start in a new worktree",
