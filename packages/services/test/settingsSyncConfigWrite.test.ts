@@ -101,6 +101,50 @@ test("MCP import writes through a symlinked config instead of replacing the link
   });
 });
 
+test("MCP import writes to a dangling symlink's target instead of replacing the link", async (t) => {
+  if (!isPosix) {
+    t.skip("symlink creation needs extra privileges on Windows");
+    return;
+  }
+  await withWorkspace(async (workspace) => {
+    // 刚部署的 dotfiles：链接已存在，目标文件（及其目录）尚未创建；相对目标经过一层中间链接
+    const linkPath = join(workspace, ".zcode", "config.json");
+    const hopPath = join(workspace, "hop.json");
+    const realConfig = join(workspace, "dotfiles", "zcode", "config.json");
+    await symlink("dotfiles/zcode/config.json", hopPath);
+    await symlink(hopPath, linkPath);
+
+    await createService().importSelected({ workspacePath: workspace, selections: MCP_SELECTION });
+
+    assert.ok((await lstat(linkPath)).isSymbolicLink());
+    assert.equal(await readlink(linkPath), hopPath);
+    assert.ok((await lstat(hopPath)).isSymbolicLink());
+    assert.ok(JSON.parse(await readFile(realConfig, "utf-8")).mcp.servers.imported);
+    assert.equal((await stat(realConfig)).mode & 0o777, 0o600);
+  });
+});
+
+test("MCP import fails the item on a symlink loop instead of replacing the link", async (t) => {
+  if (!isPosix) {
+    t.skip("symlink creation needs extra privileges on Windows");
+    return;
+  }
+  await withWorkspace(async (workspace) => {
+    const linkPath = join(workspace, ".zcode", "config.json");
+    const otherPath = join(workspace, "loop.json");
+    await symlink(otherPath, linkPath);
+    await symlink(linkPath, otherPath);
+
+    const result = await createService().importSelected({
+      workspacePath: workspace,
+      selections: MCP_SELECTION,
+    });
+
+    assert.equal(result.successCount, 0);
+    assert.equal(await readlink(linkPath), otherPath);
+  });
+});
+
 test("an unreadable target config fails the item without aborting scan or import", async () => {
   await withWorkspace(async (workspace) => {
     const configPath = join(workspace, ".zcode", "config.json");
