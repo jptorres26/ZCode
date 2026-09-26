@@ -26,7 +26,9 @@ token is needed, and no credentials are stored on the client.
 3. Remote address: `git remote get-url <remote>` (with `insteadOf` applied). Supports `https://`,
    `http://`, `ssh://`, `git://`, and the scp form `user@host:owner/repo.git`. The web address
    always drops user names, passwords, and tokens; ssh / git / scp forms become `https://host/...`
-   and drop the ssh port; http(s) keeps the original port and scheme. The path must have at least
+   and drop the ssh port. In those forms the host may be an ssh alias: aliases like `github.com-work`
+   (a known platform host plus a suffix) map back to the canonical host, and bare aliases without a
+   dot cannot be mapped to a web host, so the result is `null`; http(s) keeps the original port and scheme. The path must have at least
    two segments with no empty segment or `..`, and a trailing `.git` and `/` are removed. Host
    names only accept `[A-Za-z0-9.-]`.
 4. Platform: a host of `github.com` or containing `github` → GitHub; `gitlab.com` or containing
