@@ -1,3 +1,5 @@
+import { isExternalOpenAllowedUrl } from "@zcode/shared";
+
 export const DEFAULT_BROWSER_URL = "about:blank";
 
 const RECOVERABLE_BROWSER_GUEST_EXIT_REASONS = new Set([
@@ -127,14 +129,13 @@ export function isAllowedBrowserUrl(url: string): boolean {
   }
 }
 
-/** 系统默认浏览器入口接受 Web URL 和 file URL，不能复用内置浏览器更宽的本地/内联协议白名单。 */
+/**
+ * 系统默认浏览器入口不能复用内置浏览器更宽的本地/内联协议白名单。
+ * 与 Main 进程 OpenExternal 共用 isExternalOpenAllowedUrl：之前这里放行任意 file:，
+ * 而 Main 只接受本机 html 文档，非 html 的 file: 页面按钮可点却被静默拦截。
+ */
 export function isDefaultBrowserOpenableUrl(url: string): boolean {
-  try {
-    const protocol = new URL(url).protocol;
-    return protocol === "http:" || protocol === "https:" || protocol === "file:";
-  } catch {
-    return false;
-  }
+  return isExternalOpenAllowedUrl(url);
 }
 
 function hasAllowedExplicitProtocol(input: string): boolean {

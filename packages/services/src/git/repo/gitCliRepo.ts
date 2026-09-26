@@ -58,6 +58,8 @@ import {
   type GitResolvedRepository,
   type GitStatusSnapshot,
 } from "./gitCliTypes.js";
+import { discardGitPaths, readStagedRenameOrigins, unstageGitPaths } from "./gitPathMutations.js";
+import { readGitPullRequestLink } from "./gitPullRequestLinkReader.js";
 
 export type {
   GitBranchComparisonChange,
@@ -1453,12 +1455,7 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         return;
       }
 
-      const result = await commandProvider.run({
-        cwd: resolution.repoRoot,
-        args: ["restore", "--staged", "--", ...repoPaths],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      });
-      ensureGitCommandSucceeded("git restore --staged", result);
+      await unstageGitPaths({ commandProvider, repoRoot: resolution.repoRoot, repoPaths });
       invalidate(workspacePath);
     },
 
@@ -1474,15 +1471,15 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         return;
       }
 
-      const result = await commandProvider.run({
-        cwd: resolution.repoRoot,
-        args: staged
-          ? ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...repoPaths]
-          : ["restore", "--worktree", "--", ...repoPaths],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      });
-      ensureGitCommandSucceeded("git restore", result);
-      invalidate(workspacePath);
+      try {
+        await discardGitPaths(
+          { commandProvider, repoRoot: resolution.repoRoot, repoPaths },
+          staged,
+        );
+      } finally {
+        // 丢弃可能在 restore 成功、clean 失败时部分生效，缓存必须无条件失效。
+        invalidate(workspacePath);
+      }
     },
 
     async commit(
@@ -1515,6 +1512,10 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         });
         ensureGitCommandSucceeded("git status selected paths", scopedStatusResult);
 
+        // 修复原因：按路径裁剪的 status 永远报告不出重命名（另一端在路径集合之外），
+        // 只选中新路径提交已暂存的重命名时，原路径没有进入临时 index 的删除列表，
+        // 提交结果同时保留新旧两个文件，且原路径的删除继续留在暂存区。
+        // 修复依据：与 unstage / discard 一致，从不裁剪的 `git diff --cached -M` 读取重命名原路径。
         const cleanupRepoPaths = Array.from(
           new Set([
             ...repoPaths,
@@ -1522,6 +1523,11 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
               .entries.filter((entry) => repoPaths.includes(entry.path))
               .map((entry) => entry.originalPath)
               .filter((path): path is string => Boolean(path)),
+            ...(await readStagedRenameOrigins({
+              commandProvider,
+              repoRoot: resolution.repoRoot,
+              repoPaths,
+            })),
           ]),
         );
         const stagedEntriesResult = await commandProvider.run({
@@ -1670,6 +1676,19 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         setUpstream: !hasTrackingBranch,
         summary: nextStatus.summary,
       };
+    },
+
+    async getPullRequestLink(workspacePath: string) {
+      const status = await this.getStatus(workspacePath);
+      const resolution = status.resolution;
+      const branchName = status.summary.branchName?.trim();
+      if (!resolution.isGitAvailable || !resolution.isRepository) return null;
+      if (status.summary.headRefType !== "branch" || !branchName) return null;
+      return await readGitPullRequestLink({
+        commandProvider,
+        repoRoot: resolution.repoRoot,
+        branchName,
+      });
     },
 
     async getIdentity(workspacePath: string): Promise<GitIdentity> {

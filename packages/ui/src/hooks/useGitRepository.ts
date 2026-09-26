@@ -188,7 +188,12 @@ function buildSourceOptions(
       id: "last-turn",
       count: sumSectionCount(datasets["last-turn"].sections),
       readonly: true,
-      disabled: false,
+      // 修复原因：v4 迁移后 last-turn 数据源尚未接入（见下方 lastFileChangeEntry 注释），该选项始终为空，
+      // 空态文案却提示“当前任务还没有上一轮文件更改”，在 agent 已改过文件时误导用户。
+      // 修复依据：没有任何上一轮数据时禁用该来源；数据接入后按真实内容自动恢复可选。
+      disabled:
+        datasets["last-turn"].turnIndex === null &&
+        sumSectionCount(datasets["last-turn"].sections) === 0,
     },
   ];
 }

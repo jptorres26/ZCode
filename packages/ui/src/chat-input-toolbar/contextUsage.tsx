@@ -21,6 +21,7 @@ import {
   ContextTrigger,
 } from "@/components/ai-elements/context.js";
 import { cn } from "@/components/lib/utils.js";
+import { Button } from "@/components/ui/button.js";
 import { Progress } from "@/components/ui/progress.js";
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import { isSettingsTab } from "@/store/tabStore.js";
@@ -236,9 +237,11 @@ export function ChatContextUsage({
   codingPlanUsageRemaining,
   startPlanBalance,
   taskUsage,
-  selectedProvider: _selectedProvider,
+  selectedProvider,
   intl,
   locale,
+  onSendCompressionCommand,
+  compressionDisabled = false,
 }: {
   codingPlanUsageRemaining?: ChatCodingPlanUsageRemainingConfig;
   startPlanBalance?: ChatStartPlanBalanceConfig;
@@ -841,6 +844,11 @@ export function ChatContextUsage({
       : intl.formatMessage({
           id: "settings.modelProvider.startPlan.balance.title",
         }));
+  const compressionCommand = getContextCompressionCommand(selectedProvider);
+  const compressionDescription = intl.formatMessage(
+    { id: "chat.contextUsage.compressDescription" },
+    { command: compressionCommand },
+  );
   const contextUsedTokens = renderableTaskUsage?.used ?? 0;
   const contextMaxTokens = renderableTaskUsage?.size ?? 1;
 
@@ -931,6 +939,29 @@ export function ChatContextUsage({
                 segments={progressSegments}
                 value={usagePercent * PERCENT_MAX}
               />
+              {onSendCompressionCommand ? (
+                // 标题行已放满“上下文窗口 + 用量摘要”，按钮单独一行，说明文字可换行以容纳较长译文。
+                // 压缩与手动输入 /compact 走同一条 dispatchSlashCommand 路径；先收起浮层，
+                // 避免 HoverCard 残留在随后出现的压缩进度上。规范：docs/specs/context-usage-compact-action.md
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="min-w-0 flex-1 text-ui-sm text-foreground-subtle">
+                    {compressionDescription}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 rounded-lg"
+                    disabled={compressionDisabled}
+                    onClick={() => {
+                      setContextOpen(false);
+                      onSendCompressionCommand(compressionCommand);
+                    }}
+                  >
+                    {intl.formatMessage({ id: "chat.contextUsage.compress" })}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {renderableTaskUsage && (breakdownSegments.length > 0 || cacheHitRateLabel) ? (

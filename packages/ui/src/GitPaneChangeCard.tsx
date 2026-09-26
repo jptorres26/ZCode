@@ -1,8 +1,20 @@
 import { useMemo } from "react";
 import type { GitDiffResult } from "@zcode/shared";
-import { ChevronDownIcon, CopyIcon, FolderOpenIcon, ListTreeIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CopyIcon,
+  FolderOpenIcon,
+  ListTreeIcon,
+  MinusIcon,
+  PlusIcon,
+  Undo2Icon,
+  type LucideIcon,
+} from "lucide-react";
 import { DiffViewer } from "@/components/ui/diff-viewer.js";
+import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
+import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+import type { GitPaneFileActionId } from "@/GitPane/fileActions.js";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -18,9 +30,18 @@ import type { CodePreviewSettings } from "@/store/index.js";
 import type { ResolvedTheme } from "@/useTheme.js";
 import { LightweightDiffPreview } from "@/components/ui/lightweight-diff-preview.js";
 
+const FILE_ACTION_ICONS: Record<GitPaneFileActionId, LucideIcon> = {
+  stage: PlusIcon,
+  unstage: MinusIcon,
+  discard: Undo2Icon,
+};
+
 export function GitPaneChangeCard({
   change,
   contextMenuLabels,
+  fileActions,
+  fileActionLabels,
+  fileActionsDisabled,
   diffState,
   isDiffLoading,
   isExpanded,
@@ -29,6 +50,7 @@ export function GitPaneChangeCard({
   resolvedTheme,
   onCopyAbsolutePath,
   onCopyRelativePath,
+  onFileAction,
   onOpenChange,
   onRevealInFileManager,
   onRevealInFileTree,
@@ -40,6 +62,11 @@ export function GitPaneChangeCard({
     revealInFileManager: string;
     revealInFileTree: string;
   };
+  /** 当前文件可用的 Git 写操作；空数组表示只读。规范：docs/specs/git-review-pane-file-actions.md */
+  fileActions: readonly GitPaneFileActionId[];
+  fileActionLabels: Record<GitPaneFileActionId, string>;
+  fileActionsDisabled: boolean;
+  onFileAction: (change: GitPaneFileChange, action: GitPaneFileActionId) => void;
   diffState: GitDiffResult | null;
   isDiffLoading: boolean;
   isExpanded: boolean;
@@ -85,46 +112,92 @@ export function GitPaneChangeCard({
     <div className="w-full min-w-0">
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <button
-            type="button"
-            aria-expanded={isExpanded}
+          {/* 文件级操作按钮不能嵌套在展开按钮里（button 内不允许交互元素），
+              因此行容器改为 div：展开按钮占满左侧，操作按钮作为同级元素放在右侧。 */}
+          <div
             className={cn(
-              "sticky top-0 z-10 flex h-8 w-full items-center gap-3 bg-background px-3 text-left transition-colors hover:bg-surface-hover supports-[backdrop-filter]:backdrop-blur-sm",
+              "group/git-change-row sticky top-0 z-10 flex h-8 w-full items-center bg-background transition-colors hover:bg-surface-hover supports-[backdrop-filter]:backdrop-blur-sm",
               isExpanded && "bg-surface-hover",
             )}
-            onClick={() => onOpenChange(change, !isExpanded)}
           >
-            {/* Review 打开会一次性挂载几十个可视/overscan 行；每行都用 Radix Collapsible
+            <button
+              type="button"
+              aria-expanded={isExpanded}
+              className="flex h-full min-w-0 flex-1 items-center gap-3 pl-3 text-left"
+              onClick={() => onOpenChange(change, !isExpanded)}
+            >
+              {/* Review 打开会一次性挂载几十个可视/overscan 行；每行都用 Radix Collapsible
                 会额外创建 provider/presence 和测量链路，CDP CPU profile 里 click 后主线程集中耗在
                 React 提交阶段。这里改成普通按钮 + 仅展开行渲染内容，保留交互同时减少打开成本。 */}
-            <div className="min-w-0 flex-1 overflow-hidden">
-              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                <FileDisplayInline
-                  path={change.workspaceRelativePath}
-                  options={{
-                    showFilePath: true,
-                    className: "inline-flex min-w-0 max-w-full items-center gap-2",
-                    fileNameClassName: "truncate text-ui-base text-foreground",
-                    filePathClassName: "truncate text-ui-base text-foreground-subtlest",
-                  }}
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                  <FileDisplayInline
+                    path={change.workspaceRelativePath}
+                    options={{
+                      showFilePath: true,
+                      className: "inline-flex min-w-0 max-w-full items-center gap-2",
+                      fileNameClassName: "truncate text-ui-base text-foreground",
+                      filePathClassName: "truncate text-ui-base text-foreground-subtlest",
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center justify-end gap-3 pl-3">
+                <div className="shrink-0 whitespace-nowrap text-ui-base">
+                  <span className="text-diff-added">+{change.added}</span>
+                  <span className="ml-2 text-diff-removed">-{change.removed}</span>
+                </div>
+                <ChevronDownIcon
+                  className={cn(
+                    "size-4 shrink-0 text-foreground-subtle transition-transform",
+                    isExpanded && "rotate-180",
+                    fileActions.length === 0 && "mr-3",
+                  )}
                 />
               </div>
-            </div>
-            <div className="flex shrink-0 items-center justify-end gap-3 pl-3">
-              <div className="shrink-0 whitespace-nowrap text-ui-base">
-                <span className="text-diff-added">+{change.added}</span>
-                <span className="ml-2 text-diff-removed">-{change.removed}</span>
+            </button>
+            {fileActions.length > 0 ? (
+              // 指针设备 hover / 键盘聚焦时显示；触屏（hover: none）常显，手机 Web 不隐藏核心操作。
+              <div className="flex shrink-0 items-center gap-0.5 pr-2 pl-1 opacity-0 transition-opacity group-hover/git-change-row:opacity-100 group-focus-within/git-change-row:opacity-100 [@media(hover:none)]:opacity-100">
+                {fileActions.map((action) => {
+                  const Icon = FILE_ACTION_ICONS[action];
+                  const label = fileActionLabels[action];
+                  return (
+                    <ControlHintTooltip key={action} title={label} side="bottom">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={label}
+                        data-git-file-action={action}
+                        disabled={fileActionsDisabled}
+                        className="text-foreground-subtle hover:bg-hover hover:text-foreground"
+                        onClick={() => onFileAction(change, action)}
+                      >
+                        <Icon className="size-3.5" />
+                      </Button>
+                    </ControlHintTooltip>
+                  );
+                })}
               </div>
-              <ChevronDownIcon
-                className={cn(
-                  "size-4 shrink-0 text-foreground-subtle transition-transform",
-                  isExpanded && "rotate-180",
-                )}
-              />
-            </div>
-          </button>
+            ) : null}
+          </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
+          {fileActions.map((action) => {
+            const Icon = FILE_ACTION_ICONS[action];
+            return (
+              <ContextMenuItem
+                key={action}
+                disabled={fileActionsDisabled}
+                onSelect={() => onFileAction(change, action)}
+              >
+                <Icon className="size-4" />
+                {fileActionLabels[action]}
+              </ContextMenuItem>
+            );
+          })}
+          {fileActions.length > 0 ? <ContextMenuSeparator /> : null}
           <ContextMenuItem
             disabled={!canRevealInFileManager}
             onSelect={() => onRevealInFileManager(change)}

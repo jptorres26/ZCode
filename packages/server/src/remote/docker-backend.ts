@@ -18,6 +18,7 @@ import {
   resolveDockerCommand,
   type DockerContainerInfo,
 } from "@zcode/server/remote/docker-detect.js";
+import { matchDockerContainer } from "@zcode/server/remote/dockerContainerMatch.js";
 import {
   normalizeRemoteArch,
   normalizeRemotePlatform,
@@ -273,18 +274,19 @@ export class DockerBackend implements IRemoteBackend {
 
   private async resolveContainer(): Promise<DockerContainerInfo> {
     const containers = await listDockerContainers({ all: true });
-    const target = this.options.container;
-    // 之前用一个 find 同时做名称、完整 ID 和 ID 前缀匹配，返回的是 docker ps 顺序里的首个命中：
-    // 名字全由十六进制字符组成的容器（如 "cafe"）会被更早创建、ID 恰好以它开头的无关容器抢先。
-    // 这里精确名称优先，其次完整 ID，最后才是前缀。
-    const matched =
-      containers.find((container) => container.name === target) ??
-      containers.find((container) => container.id === target) ??
-      containers.find((container) => container.id.startsWith(target));
-
-    if (!matched) {
+    // 精确名称优先，其次 ID（含粘贴的 64 位完整 ID），最后才是唯一前缀；规则见 matchDockerContainer。
+    const match = matchDockerContainer(containers, this.options.container);
+    if (match.status === "ambiguous") {
+      throw new Error(
+        `Docker 容器 ID 前缀 ${this.options.container} 同时匹配多个容器：${match.candidates
+          .map((candidate) => candidate.name)
+          .join(", ")}`,
+      );
+    }
+    if (match.status === "not-found") {
       throw new Error(`未找到名为 ${this.options.container} 的 Docker 容器`);
     }
+    const matched = match.container;
 
     if (matched.state.toLowerCase() !== "running") {
       throw new Error(

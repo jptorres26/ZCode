@@ -43,7 +43,8 @@ ARCHIVE="$TMP_DIR/$TARBALL"
 curl -fL "\${BASE_URL%/}/releases/$VERSION/$TARBALL" -o "$ARCHIVE"
 
 # build-zcode 会把 sha256 写入 latest.json，但安装脚本此前从不校验：
-# 截断或被篡改的发行包会被直接解压并执行。
+# 传输截断或损坏的发行包会被直接解压并执行。
+# 注意：sha256 与发行包来自同一分发源，只能发现截断/损坏，不能防御被控制的分发服务器。
 if [ -z "$SHA256" ]; then
   echo "zcode install: latest.json has no sha256; refusing to install an unverified archive" >&2
   exit 1

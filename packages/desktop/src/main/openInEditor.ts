@@ -1,9 +1,12 @@
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
+import { dirname } from "node:path";
 import { shell } from "electron";
 import type { OpenInEditorOptions, OpenInEditorRemoteTarget } from "@zcode/shared";
 import { listWSLDistros } from "@zcode/server/remote/wsl-detect.js";
 import { getEditorDefsForCurrentPlatform, resolveEditorDefAppPath } from "./editors.js";
+import { launchLinuxEditor } from "./linuxEditorLaunch.js";
+import { getLinuxEditorDefs } from "./linuxEditors.js";
 import { logger } from "./logger.js";
 import { isDelegatedWindowsExplorerExit } from "./windowsExplorerDelegation.js";
 
@@ -310,7 +313,20 @@ export async function openInEditor(
   path: string,
   options?: OpenInEditorOptions,
 ): Promise<OpenInEditorResult> {
-  const def = getEditorDefsForCurrentPlatform().find((editor) => editor.id === editorId);
+  // Linux 目标来自异步 PATH 检测（linuxEditors.ts）；这里映射成与其它平台相同的结构，
+  // 让下方远程 SSH / WSL 的 VS Code 分支可以复用同一份命令路径。
+  const linuxDef =
+    process.platform === "linux"
+      ? (await getLinuxEditorDefs()).find((editor) => editor.id === editorId)
+      : undefined;
+  const def = linuxDef
+    ? {
+        id: linuxDef.id,
+        name: linuxDef.name,
+        appPath: linuxDef.commandPath,
+        command: linuxDef.commandPath,
+      }
+    : getEditorDefsForCurrentPlatform().find((editor) => editor.id === editorId);
   if (!def) {
     return { success: false, error: `unknown editor: ${editorId}` };
   }
@@ -349,6 +365,24 @@ export async function openInEditor(
   }
 
   const pathKind = detectPathKind(path);
+
+  if (linuxDef?.kind === "file-manager") {
+    if (pathKind === "file") {
+      shell.showItemInFolder(path);
+      return { success: true };
+    }
+    return openPathViaShell(path);
+  }
+
+  if (linuxDef) {
+    try {
+      await launchLinuxEditor(linuxDef, path, pathKind === "file" ? dirname(path) : path);
+      return { success: true };
+    } catch (error) {
+      logger.warn("[editors] 打开 Linux 编辑器失败", { editorId, error: stringifyError(error) });
+      return { success: false, error: stringifyError(error) };
+    }
+  }
 
   if (editorId === "finder") {
     if (pathKind === "file") {
