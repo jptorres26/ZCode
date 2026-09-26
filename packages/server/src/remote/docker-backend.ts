@@ -273,8 +273,9 @@ export class DockerBackend implements IRemoteBackend {
   }
 
   private async resolveContainer(): Promise<DockerContainerInfo> {
-    const containers = await listDockerContainers({ all: true });
-    // 精确名称优先，其次 ID（含粘贴的 64 位完整 ID），最后才是唯一前缀；规则见 matchDockerContainer。
+    // 取完整 ID：短 ID 只有 12 位，无法校验用户粘贴的 64 位 ID 的其余部分。
+    const containers = await listDockerContainers({ all: true, fullIds: true });
+    // 精确名称优先，其次完整 ID 相等，最后才是唯一前缀；规则见 matchDockerContainer。
     const match = matchDockerContainer(containers, this.options.container);
     if (match.status === "ambiguous") {
       throw new Error(
