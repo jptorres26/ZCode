@@ -176,10 +176,15 @@ export async function isDockerAvailable(): Promise<boolean> {
 
 export async function listDockerContainers(options?: {
   all?: boolean;
+  /** 返回 64 位完整 ID（`--no-trunc`）；按用户填写的 ID 连接时必须使用，列表展示保持短 ID。 */
+  fullIds?: boolean;
 }): Promise<DockerContainerInfo[]> {
   const args = ["ps"];
   if (options?.all) {
     args.push("-a");
+  }
+  if (options?.fullIds) {
+    args.push("--no-trunc");
   }
   args.push("--format", "{{json .}}");
 
