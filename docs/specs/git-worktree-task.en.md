@@ -30,10 +30,13 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
    The slug replaces characters outside `[A-Za-z0-9._-]` with `-`. If the directory exists, try `-2`,
    `-3`, … (up to 99). It lives outside the repository so it never shows up in the original repo's
    file tree or `git status`.
-3. Run `git worktree add -b <branch> <path> HEAD`: the new branch starts at the current HEAD.
+3. Run `git worktree prune` first (it only drops entries whose directory was deleted; otherwise a
+   manually deleted directory of the same name makes the add fail), then
+   `git worktree add -b <branch> <path> HEAD`: the new branch starts at the current HEAD.
    **Uncommitted changes are not carried into the new worktree.**
 4. If the original workspace is a subdirectory of the repository, the returned `workspacePath` is the
-   same subdirectory inside the new worktree.
+   same subdirectory inside the new worktree. If that subdirectory doesn't exist at HEAD (untracked,
+   ignored or new), it falls back to the worktree root.
 5. On failure, parse git's output into issues; on success, invalidate the original workspace's cache.
 
 ## Interaction
@@ -44,7 +47,9 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
   worktree starts from the current commit without uncommitted changes.
 - On success, `requestV4ComposerDraftWorkspaceTransfer` moves the current draft to the new path, then
   `handleStartDraftInWorkspace(newPath, undefined, "project")` opens it as a draft. On failure the
-  dialog stays open and a toast shows the first issue.
+  dialog stays open and a toast shows the first issue. The dialog can't be closed while creation is
+  running, and a result that arrives after the host component unmounted is ignored, so it never moves
+  the draft or switches workspace late.
 - Strings live under `git.worktree.*`, in both `en-US` and `zh-CN`.
 
 ## Out of scope for now
