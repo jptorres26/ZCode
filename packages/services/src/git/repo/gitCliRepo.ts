@@ -58,6 +58,7 @@ import {
   type GitResolvedRepository,
   type GitStatusSnapshot,
 } from "./gitCliTypes.js";
+import { discardGitPaths, unstageGitPaths } from "./gitPathMutations.js";
 
 export type {
   GitBranchComparisonChange,
@@ -1453,12 +1454,7 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         return;
       }
 
-      const result = await commandProvider.run({
-        cwd: resolution.repoRoot,
-        args: ["restore", "--staged", "--", ...repoPaths],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      });
-      ensureGitCommandSucceeded("git restore --staged", result);
+      await unstageGitPaths({ commandProvider, repoRoot: resolution.repoRoot, repoPaths });
       invalidate(workspacePath);
     },
 
@@ -1474,15 +1470,15 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         return;
       }
 
-      const result = await commandProvider.run({
-        cwd: resolution.repoRoot,
-        args: staged
-          ? ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...repoPaths]
-          : ["restore", "--worktree", "--", ...repoPaths],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      });
-      ensureGitCommandSucceeded("git restore", result);
-      invalidate(workspacePath);
+      try {
+        await discardGitPaths(
+          { commandProvider, repoRoot: resolution.repoRoot, repoPaths },
+          staged,
+        );
+      } finally {
+        // 丢弃可能在 restore 成功、clean 失败时部分生效，缓存必须无条件失效。
+        invalidate(workspacePath);
+      }
     },
 
     async commit(
