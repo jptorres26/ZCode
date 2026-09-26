@@ -449,20 +449,33 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
 
   const tabStoreApi = useOptionalTabStoreApi();
   // 删除时按需读取（不订阅）：同一 worktree 的其它本地入口。
+  // 修复原因：入口保存的是打开时的路径写法，git 给出的 worktree 路径是真实路径；数据目录经符号链接时字符串比较不匹配。
+  // 修复依据：字符串不匹配时按该入口所在 worktree 的真实路径（getManagedWorktree）比较。
   const listOtherEntriesInWorktree = useCallback(
-    (worktreePath: string) =>
-      (tabStoreApi?.getState().tabs ?? [])
+    async (worktreePath: string) => {
+      const others = (tabStoreApi?.getState().tabs ?? [])
         .filter(isWorkspaceTab)
         .filter(
           (other) =>
             other.id !== tab.id &&
             !other.remoteSessionId &&
             !other.remoteTarget &&
-            !other.workspaceIdentity &&
-            isSameOrInsidePath(other.workspacePath, worktreePath),
-        )
-        .map((other) => getPathLeaf(other.workspacePath)),
-    [tab.id, tabStoreApi],
+            !other.workspaceIdentity,
+        );
+      const inWorktree = await Promise.all(
+        others.map(async (other) => {
+          if (isSameOrInsidePath(other.workspacePath, worktreePath)) return true;
+          const managed = await baseServices.gitService
+            .getManagedWorktree({ workspacePath: other.workspacePath })
+            .catch(() => null);
+          return managed?.worktreePath === worktreePath;
+        }),
+      );
+      return others
+        .filter((_, index) => inWorktree[index])
+        .map((other) => getPathLeaf(other.workspacePath));
+    },
+    [baseServices.gitService, tab.id, tabStoreApi],
   );
   // 删除 ZCode 创建的 worktree。规范：docs/specs/git-worktree-task.md
   const { managedWorktree, deleteWorktree } = useManagedWorktreeDeletion({

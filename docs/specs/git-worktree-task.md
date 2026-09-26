@@ -68,10 +68,14 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 - `ITerminalService.disposeUnderPath({ path })`：结束所有初始 cwd 位于该目录（含自身）下的终端，并在进程退出后 resolve
   （等待上限 5 秒，只防止删除流程无限挂起）。仍在 `create()` 中的终端在第一个 await 前即登记：被标记取消后，
   启动即结束并以错误返回，`disposeUnderPath` 同样等待它结束。`disposeUnderPath` 还会（在任何 await 之前）封锁该目录：
-  此后请求或实际 cwd 位于其下的新 `create()` 立即被拒绝，直到调用 `ITerminalService.releasePathBlock({ path })`；
-  删除流程在删除尝试结束（成功或失败）后解除封锁。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
-- 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。0. 若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前与释放前
-  各检查一次）；否则其它入口的 Agent 仍在 worktree 内运行，删除会失败或删掉未确认的活动检出。
+  此后请求、解析或真实 cwd（经符号链接到达同一目录也算）位于其下的新 `create()` 被拒绝，直到调用
+  `ITerminalService.releasePathBlock({ path })`；删除流程在删除尝试结束（成功或失败）后解除封锁。封锁记录该目录的
+  设备号、inode 与创建时间：界面重载或崩溃导致未解除时，一旦该目录已不存在或已是同路径上新建的另一个目录，封锁即失效，
+  不会让之后的 worktree 无法开终端（不依赖定时器）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
+- 前提：若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前与释放前
+  各检查一次；路径字符串不匹配时按该入口所在 worktree 的真实路径比较，覆盖经符号链接打开的情况）；否则其它入口的
+  Agent 仍在 worktree 内运行，删除会失败或删掉未确认的活动检出。
+- 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
   2. 破坏性确认：说明将删除的目录、保留的分支；
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以

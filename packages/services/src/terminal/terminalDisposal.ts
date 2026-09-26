@@ -1,7 +1,7 @@
 /**
  * 按目录结束终端并等待退出（删除 worktree 等目录前使用）。规范：docs/specs/git-worktree-task.md
  */
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 /**
@@ -37,29 +37,47 @@ export function isPathSameOrInside(child: string, parent: string, platform = pro
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
 }
 
-/** 删除中的目录：在调用方释放前拒绝在其下新建终端。键为请求路径，real 为其真实路径。 */
-export type TerminalPathBlocks = Map<string, { count: number; real: string | null }>;
+/**
+ * 删除中的目录：在调用方释放前拒绝在其下新建终端。键为请求路径，real 为其真实路径，
+ * identity 为封锁时该目录的设备号、inode 与创建时间（用于识别已失效的封锁）。
+ */
+export type TerminalPathBlocks = Map<
+  string,
+  { count: number; real: string | null; identity: string | null }
+>;
 
-export function isTerminalPathBlocked(blocks: TerminalPathBlocks, cwd: string): boolean {
-  for (const [raw, entry] of blocks) {
-    if (isPathSameOrInside(cwd, raw) || (entry.real && isPathSameOrInside(cwd, entry.real))) {
-      return true;
-    }
+async function readPathIdentity(path: string): Promise<string | null> {
+  try {
+    const stats = await stat(path, { bigint: true });
+    // ext4、tmpfs 等会立即复用刚释放的 inode，同路径重建的目录 inode 可能相同；创建时间不随目录内容变化，可区分两者。
+    return `${stats.dev}:${stats.ino}:${stats.birthtimeNs}`;
+  } catch {
+    return null;
   }
-  return false;
 }
 
-/** create() 开始时调用：请求或实际 cwd 位于删除中的目录下时拒绝（目录已删除时实际 cwd 会回退到 HOME）。 */
-export function assertTerminalCwdNotBlocked(
+/**
+ * create() 在得到实际 cwd 后调用：请求、解析或真实 cwd 任一位于删除中的目录下时拒绝
+ * （真实路径覆盖经符号链接到达同一目录的情况；目录已删除时解析 cwd 会回退到 HOME，因此也检查请求路径）。
+ * 修复原因：封锁只由界面在删除结束后解除，界面重载或崩溃会让封锁留到 Host 退出，之后同一路径上新建的 worktree
+ * 无法开终端。修复依据：被封锁的目录已不存在，或已是另一个目录（设备号/inode/创建时间不同）时，视为封锁失效并移除。
+ */
+export async function assertTerminalCwdAllowed(
   blocks: TerminalPathBlocks,
-  requestedCwd: string | undefined,
-  resolvedCwd: string,
-): void {
-  if (
-    (requestedCwd && isTerminalPathBlocked(blocks, resolve(requestedCwd))) ||
-    isTerminalPathBlocked(blocks, resolve(resolvedCwd))
-  ) {
-    throw new Error(`Terminal was not started because '${requestedCwd}' is being removed`);
+  cwds: Array<string | undefined>,
+): Promise<void> {
+  const candidates = cwds.filter((cwd): cwd is string => Boolean(cwd)).map((cwd) => resolve(cwd));
+  for (const [raw, entry] of Array.from(blocks.entries())) {
+    const matches = candidates.some(
+      (cwd) => isPathSameOrInside(cwd, raw) || (entry.real && isPathSameOrInside(cwd, entry.real)),
+    );
+    if (!matches) continue;
+    const current = await readPathIdentity(entry.real ?? raw);
+    if (current === null || (entry.identity !== null && current !== entry.identity)) {
+      blocks.delete(raw);
+      continue;
+    }
+    throw new Error(`Terminal was not started because '${cwds[0] ?? raw}' is being removed`);
   }
 }
 
@@ -104,7 +122,7 @@ export async function disposeTerminalsUnderPath(
   },
 ): Promise<void> {
   const rawTarget = resolve(path);
-  const block = state.blocks.get(rawTarget) ?? { count: 0, real: null };
+  const block = state.blocks.get(rawTarget) ?? { count: 0, real: null, identity: null };
   block.count += 1;
   state.blocks.set(rawTarget, block);
   // 先同步标记仍在创建中的终端，再等待 realpath，避免在此期间漏掉新开始的创建。
@@ -120,6 +138,7 @@ export async function disposeTerminalsUnderPath(
   cancelPendingUnder(rawTarget);
   const target = await realpath(path).catch(() => rawTarget);
   block.real = target;
+  block.identity ??= await readPathIdentity(target);
   cancelPendingUnder(target);
   for (const [id, terminal] of Array.from(state.terminals.entries())) {
     if (!isPathSameOrInside(terminal.cwd, target)) continue;

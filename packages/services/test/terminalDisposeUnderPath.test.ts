@@ -20,12 +20,12 @@ test("Windows paths compare case-insensitively", { skip: process.platform !== "w
 
 test("disposal blocks new terminals under the folder until released, and cancels pending ones", async () => {
   const {
-    assertTerminalCwdNotBlocked,
+    assertTerminalCwdAllowed,
     disposeTerminalsUnderPath,
     registerPendingTerminalCreate,
     releaseTerminalPathBlock,
   } = await import("../src/terminal/terminalDisposal.js");
-  const { mkdtemp, mkdir } = await import("node:fs/promises");
+  const { mkdtemp, mkdir, symlink } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const base = await mkdtemp(join(tmpdir(), "term-block-"));
@@ -52,8 +52,8 @@ test("disposal blocks new terminals under the folder until released, and cancels
     blocks,
   });
   // 封锁在第一个 await 之前生效
-  assert.throws(
-    () => assertTerminalCwdNotBlocked(blocks, join(worktree, "packages"), "/"),
+  await assert.rejects(
+    assertTerminalCwdAllowed(blocks, [join(worktree, "packages")]),
     /being removed/,
   );
   settle();
@@ -61,9 +61,41 @@ test("disposal blocks new terminals under the folder until released, and cancels
   assert.equal(pending.cancelled, true);
   assert.equal(other.pending.cancelled, false);
   assert.deepEqual(cleaned, ["1"]);
-  assert.doesNotThrow(() => assertTerminalCwdNotBlocked(blocks, base, base));
-  assert.throws(() => assertTerminalCwdNotBlocked(blocks, worktree, worktree), /being removed/);
+  await assertTerminalCwdAllowed(blocks, [base]);
+  await assert.rejects(assertTerminalCwdAllowed(blocks, [worktree]), /being removed/);
+  // 经符号链接到达同一目录（真实路径匹配）同样被拒绝
+  if (process.platform !== "win32") {
+    await symlink(worktree, join(base, "alias"));
+    await assert.rejects(
+      assertTerminalCwdAllowed(blocks, [join(base, "alias"), join(base, "alias"), worktree]),
+      /being removed/,
+    );
+  }
 
   releaseTerminalPathBlock(blocks, worktree);
-  assert.doesNotThrow(() => assertTerminalCwdNotBlocked(blocks, worktree, worktree));
+  await assertTerminalCwdAllowed(blocks, [worktree]);
+});
+
+test("a block whose folder is gone or was replaced is dropped instead of blocking forever", async () => {
+  const { assertTerminalCwdAllowed, disposeTerminalsUnderPath } =
+    await import("../src/terminal/terminalDisposal.js");
+  const { mkdtemp, mkdir, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const base = await mkdtemp(join(tmpdir(), "term-stale-"));
+  const worktree = join(base, "wt");
+  await mkdir(worktree);
+  const blocks = new Map();
+  const state = { pendingCreates: [], terminals: new Map(), cleanupTerminal: () => {}, blocks };
+  // 界面在删除中途重载：封锁从未解除
+  await disposeTerminalsUnderPath(worktree, state);
+  await rm(worktree, { recursive: true });
+  await mkdir(worktree); // 之后同一路径上新建的 worktree 是另一个目录
+  await assertTerminalCwdAllowed(blocks, [worktree]);
+  assert.equal(blocks.size, 0);
+
+  await disposeTerminalsUnderPath(worktree, state);
+  await rm(worktree, { recursive: true });
+  await assertTerminalCwdAllowed(blocks, [worktree]);
+  assert.equal(blocks.size, 0);
 });
