@@ -68,6 +68,9 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
   `aria-label` 与 `ControlHintTooltip`）：指针设备在行 hover / 键盘聚焦时显示，
   触屏（`hover: none`）常显，满足手机 Web 不隐藏核心操作的要求。
 - 行的右键菜单同步提供相同操作，与按钮复用同一可用性判断。
+- 右键菜单第一项为“打开文件”：经侧栏既有的 `onOpenCodeViewer` 以
+  `{ type: "file", title: 文件名, path: 绝对路径 }` 在应用内文件预览中打开当前工作区版本；
+  已删除的文件禁用该项；宿主未提供 `onOpenCodeViewer` 时不显示。它是只读操作，所有来源都可用。
 - 面板头部在刷新按钮左侧提供批量操作（`size="lg" variant="ghost"`）。
   头部放不下来源选择器与操作组时，操作组整体换到下一行并右对齐，不得与来源选择器重叠（手机 Web 侧栏约 200px 宽）。
 - 任何丢弃（单个或批量）都先弹出确认框（`confirmVariant="destructive"`），文案写明
@@ -85,7 +88,8 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
 4. 对已暂存的重命名点击“丢弃”并确认，工作区恢复原文件且新路径消失。
 5. 冲突文件不显示“丢弃”；服务端收到冲突路径的丢弃请求时报错且不修改任何文件。
 6. 无提交仓库中“取消暂存”保留工作区文件。
-7. `branch` / `last-turn` 来源不显示任何操作。
+7. `branch` / `last-turn` 来源不显示暂存、取消暂存或丢弃操作。
+8. 右键某文件选择“打开文件”，侧栏新增该文件的预览标签；已删除文件的该项为禁用。
 
 自动化覆盖：`packages/services/test/gitPathMutations.test.ts`（真实临时仓库覆盖 2–6）、
 `packages/ui/test/gitPaneFileActions.test.ts`（操作矩阵与批量路径选择）。

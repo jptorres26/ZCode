@@ -819,6 +819,7 @@ const zhCN: Record<string, string> = {
   "git.viewOptions.split": "并排视图",
   "git.viewOptions.splitUnavailable": "加宽面板后可使用并排视图。",
   "git.viewOptions.wrapLines": "自动换行",
+  "git.changeContext.openFile": "打开文件",
   "git.changeContext.revealInFileManager": "在文件管理器中打开",
   "git.changeContext.revealInFileTree": "在文件树中显示",
   "git.close": "关闭 Git 面板",

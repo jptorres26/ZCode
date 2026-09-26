@@ -19,7 +19,8 @@ import { useGitActions } from "@/hooks/useGitActions.js";
 import { useFileContextActions } from "@/hooks/useFileContextActions.js";
 import { useWorkspaceOpenInEditorTarget } from "@/hooks/useWorkspaceOpenInEditorTarget.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { joinFilePath, isAbsoluteFilePath } from "@/lib/path.js";
+import type { CodeViewerSource } from "@/lib/codeViewer.js";
+import { getPathLeaf, joinFilePath, isAbsoluteFilePath } from "@/lib/path.js";
 import {
   getDiffCacheKey,
   getErrorMessage,
@@ -69,6 +70,7 @@ export function GitPane({
   onClose: _onClose,
   onRefresh,
   onRevealFileInTree,
+  onOpenCodeViewer,
   workspaceIdentity,
   workspaceRemoteSessionId,
 }: {
@@ -86,6 +88,8 @@ export function GitPane({
   onClose: () => void;
   onRefresh: () => void;
   onRevealFileInTree?: (path: string) => void;
+  /** 在应用内文件预览中打开变更文件；未提供时不显示“打开文件”。 */
+  onOpenCodeViewer?: (source: CodeViewerSource) => void;
 }) {
   const { gitService } = useServices();
   const { intl } = useZCodeIntl();
@@ -485,6 +489,14 @@ export function GitPane({
     [fileActions, resolveChangePath],
   );
 
+  const handleOpenChangeInViewer = useCallback(
+    (change: GitPaneFileChange) => {
+      const path = resolveChangePath(change);
+      onOpenCodeViewer?.({ type: "file", title: getPathLeaf(path) || path, path });
+    },
+    [onOpenCodeViewer, resolveChangePath],
+  );
+
   const handleRevealChangeInFileTree = useCallback(
     (change: GitPaneFileChange) => {
       onRevealFileInTree?.(resolveChangePath(change));
@@ -526,6 +538,7 @@ export function GitPane({
 
   const contextMenuLabels = useMemo(
     () => ({
+      openFile: intl.formatMessage({ id: "git.changeContext.openFile" }),
       copyAbsolutePath: intl.formatMessage({ id: "fileActions.copyAbsolutePath" }),
       copyRelativePath: intl.formatMessage({ id: "fileActions.copyRelativePath" }),
       revealInFileManager: intl.formatMessage({ id: "git.changeContext.revealInFileManager" }),
@@ -664,6 +677,7 @@ export function GitPane({
                       onCopyAbsolutePath={handleCopyAbsolutePath}
                       onCopyRelativePath={handleCopyRelativePath}
                       onOpenChange={handleExpandChange}
+                      onOpenFile={onOpenCodeViewer ? handleOpenChangeInViewer : undefined}
                       onRevealInFileManager={handleRevealChangeInFileManager}
                       onRevealInFileTree={
                         onRevealFileInTree ? handleRevealChangeInFileTree : undefined

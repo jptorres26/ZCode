@@ -875,6 +875,7 @@ const enUS: Record<string, string> = {
   "git.viewOptions.split": "Split",
   "git.viewOptions.splitUnavailable": "Widen the pane to use split view.",
   "git.viewOptions.wrapLines": "Wrap lines",
+  "git.changeContext.openFile": "Open file",
   "git.changeContext.revealInFileManager": "Open in file manager",
   "git.changeContext.revealInFileTree": "Reveal in file tree",
   "git.close": "Close Git pane",
