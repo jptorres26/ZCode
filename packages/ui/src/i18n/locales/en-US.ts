@@ -1786,6 +1786,7 @@ const enUS: Record<string, string> = {
   "settings.shortcuts.command.toggleSidebar": "Toggle Sidebar",
   "settings.shortcuts.command.switchTheme": "Toggle Light/Dark Theme",
   "settings.shortcuts.command.toggleSidePane": "Toggle Side Pane",
+  "settings.shortcuts.command.toggleReviewPane": "Toggle Review Pane",
   "settings.shortcuts.command.toggleTerminal": "Toggle Terminal",
   "settings.shortcuts.command.previousConversation": "Previous Task",
   "settings.shortcuts.command.nextConversation": "Next Task",

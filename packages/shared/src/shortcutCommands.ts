@@ -21,6 +21,7 @@ export type ShortcutCommandId =
   | "switchTheme"
   | "toggleTerminal"
   | "toggleSidePane"
+  | "toggleReviewPane"
   | "previousConversation"
   | "nextConversation"
   | "navigateBack"
@@ -71,6 +72,8 @@ export const SHORTCUT_COMMANDS: readonly ShortcutCommandEntry[] = [
   { id: "switchTheme", channel: "window", defaultBindings: ["CmdOrCtrl+Shift+l"] },
   { id: "toggleTerminal", channel: "window", defaultBindings: ["CmdOrCtrl+j"] },
   { id: "toggleSidePane", channel: "window", defaultBindings: ["CmdOrCtrl+Alt+b"] },
+  // 直达 Review 面板（与 VS Code 源代码管理同键）。规范：docs/specs/review-pane-shortcut.md
+  { id: "toggleReviewPane", channel: "window", defaultBindings: ["CmdOrCtrl+Shift+g"] },
   { id: "previousConversation", channel: "window", defaultBindings: ["CmdOrCtrl+Shift+["] },
   { id: "nextConversation", channel: "window", defaultBindings: ["CmdOrCtrl+Shift+]"] },
   { id: "navigateBack", channel: "window", defaultBindings: ["CmdOrCtrl+["] },

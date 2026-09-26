@@ -961,6 +961,10 @@ export function App({
     // ⌥⌘B 与 header 最右侧按钮共用同一条 toggle 入口，
     // 避免快捷键和按钮行为漂移；空面板的展示统一由 Open tab 空态承接。
     toggleSidePane: () => runVisibleWorkspaceCommand(handleToggleSidePane),
+    // 与标题栏 Review 按钮共用同一入口；办公模式不提供 Review，放行按键。
+    toggleReviewPane: isOfficeMode
+      ? null
+      : () => runVisibleWorkspaceCommand(handleToggleGitIfWritable),
     previousConversation: handleSelectPreviousConversation,
     nextConversation: handleSelectNextConversation,
     navigateBack: canPrimaryNavigationBack
