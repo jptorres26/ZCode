@@ -175,6 +175,14 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
     const outside = join(repo, "..", "own-worktree");
     await git(repo, "worktree", "add", "-q", "-b", "own", outside);
     assert.equal(await gitRepo.getManagedWorktree(outside), null);
+    // 用户手动放进 ZCode worktrees 目录的 worktree 没有创建标记，同样不可删除
+    const imported = join(getWorktreeContainerDir(worktreesRootDir, repo), "imported");
+    await git(repo, "worktree", "add", "-q", "-b", "imported", imported);
+    assert.equal(await gitRepo.getManagedWorktree(imported), null);
+    assert.deepEqual(await gitRepo.removeWorktree(imported, true), {
+      ok: false,
+      reason: "not-managed",
+    });
 
     const created = await gitRepo.createWorktree(repo, "feature/x");
     assert.equal(created.ok, true);
@@ -215,5 +223,84 @@ test("removing a managed worktree needs force when dirty and keeps the branch", 
     assert.equal(await exists(created.worktreePath), false);
     assert.equal(await worktreeCount(repo), 1);
     assert.equal(await git(repo, "branch", "--list", "cleanup-me"), "cleanup-me");
+  });
+});
+
+test("a removal that fails after git dropped the registration reports a leftover that can be cleaned", async () => {
+  const { createGitCommandProvider } = await import("../src/git/providers/gitCommandProvider.js");
+  const { readManagedWorktree, removeLeftoverWorktreeDir, removeManagedWorktree } =
+    await import("../src/git/repo/gitWorktree.js");
+  await withRepo(async (repo, worktreesRootDir) => {
+    const created = await createGitCliRepo({ worktreesRootDir }).createWorktree(repo, "locked");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const real = createGitCommandProvider();
+    // 模拟 Windows 目录被占用：git 删掉了管理目录（登记消失），目录本身没删掉，命令失败
+    const failingRemove = {
+      resolveGitBinary: () => real.resolveGitBinary(),
+      async run(options: Parameters<typeof real.run>[0]) {
+        if (options.args[0] === "worktree" && options.args[1] === "remove") {
+          const adminDir = await git(created.worktreePath, "rev-parse", "--absolute-git-dir");
+          await rm(adminDir, { recursive: true, force: true });
+          return {
+            ...(await real.run({ ...options, args: ["--version"] })),
+            exitCode: 255,
+            stderr: "error: failed to delete",
+          };
+        }
+        return await real.run(options);
+      },
+    };
+    const worktree = await readManagedWorktree({
+      commandProvider: real,
+      worktreeRoot: created.worktreePath,
+      worktreesRootDir,
+    });
+    assert.ok(worktree);
+    const result = await removeManagedWorktree({
+      commandProvider: failingRemove,
+      worktree,
+      force: true,
+    });
+    assert.deepEqual(result, { ok: false, reason: "leftover", detail: "error: failed to delete" });
+    assert.ok(await exists(created.worktreePath));
+
+    // 只清理 ZCode worktrees 目录下第二层、且已失效的检出
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({
+        worktreePath: getWorktreeContainerDir(worktreesRootDir, repo),
+        worktreesRootDir,
+      }),
+      { ok: false, reason: "not-leftover" },
+    );
+    assert.deepEqual(await removeLeftoverWorktreeDir({ worktreePath: repo, worktreesRootDir }), {
+      ok: false,
+      reason: "not-leftover",
+    });
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({ worktreePath: created.worktreePath, worktreesRootDir }),
+      { ok: true },
+    );
+    assert.equal(await exists(created.worktreePath), false);
+    assert.equal(await git(repo, "branch", "--list", "locked"), "locked");
+    // 已不存在时重复清理也算成功
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({ worktreePath: created.worktreePath, worktreesRootDir }),
+      { ok: true },
+    );
+  });
+});
+
+test("a live worktree is never treated as a leftover", async () => {
+  const { removeLeftoverWorktreeDir } = await import("../src/git/repo/gitWorktree.js");
+  await withRepo(async (repo, worktreesRootDir) => {
+    const created = await createGitCliRepo({ worktreesRootDir }).createWorktree(repo, "live");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({ worktreePath: created.worktreePath, worktreesRootDir }),
+      { ok: false, reason: "not-leftover" },
+    );
+    assert.ok(await exists(created.worktreePath));
   });
 });

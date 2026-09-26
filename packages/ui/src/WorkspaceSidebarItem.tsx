@@ -376,60 +376,63 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   }, [confirmDialog, intl, workspaceKeyForLog]);
 
   // 返回的 Promise 在 runtime 释放完成后 resolve（失败只记录），供删除 worktree 在删目录前等待。
-  const releaseWorkspaceEntry = useCallback((): Promise<void> => {
-    const workspaceKey = workspaceKeyForLog;
-    closeTab(tab.id);
-    const runtimeReleased = releaseWorkspaceRuntimeAfterProjectRemoval({
-      tab: {
-        workspacePath: tab.workspacePath,
-        workspaceIdentity: tab.workspaceIdentity,
-      },
-      zcodeTaskService,
-    });
-    // 移除 workspace 只是移除入口和连接历史，不代表用户要隐藏历史任务：
-    // 这里只失效缓存，保留 sqlite 任务索引原状态，避免重连同一 SSH workspace 后任务像“丢了”。
-    invalidateTaskQueryCacheByScopes([
-      {
-        workspacePath: tab.workspacePath,
-        ...(tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : {}),
-      },
-    ]);
+  const releaseWorkspaceEntry = useCallback(
+    (options?: { scanReservedNames?: boolean }): Promise<void> => {
+      const workspaceKey = workspaceKeyForLog;
+      closeTab(tab.id);
+      const runtimeReleased = releaseWorkspaceRuntimeAfterProjectRemoval({
+        tab: {
+          workspacePath: tab.workspacePath,
+          workspaceIdentity: tab.workspaceIdentity,
+        },
+        zcodeTaskService,
+      });
+      // 移除 workspace 只是移除入口和连接历史，不代表用户要隐藏历史任务：
+      // 这里只失效缓存，保留 sqlite 任务索引原状态，避免重连同一 SSH workspace 后任务像“丢了”。
+      invalidateTaskQueryCacheByScopes([
+        {
+          workspacePath: tab.workspacePath,
+          ...(tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : {}),
+        },
+      ]);
 
-    if (!isRemoteWorkspace) {
-      void scanWindowsReservedDeviceNameFiles(baseServices.fileService, tab.workspacePath)
-        .then((result) => {
-          if (result.findings.length === 0) {
-            return;
-          }
-          const firstFinding = result.findings[0] ?? tab.workspacePath;
-          toast(
-            intl.formatMessage(
-              { id: "workspaceSidebar.windowsReservedNameRisk" },
-              { count: result.findings.length, path: firstFinding },
-            ),
-            { durationMs: 8_000, variant: "warning" },
-          );
-        })
-        .catch((error: unknown) => {
-          // Windows 保留设备名扫描只是移除后的兼容风险提示，失败不能影响 workspace 生命周期释放。
-          logger.debug("[WorkspaceSidebarItem] Windows 保留名风险扫描失败", {
-            workspaceKey,
-            error,
+      if (!isRemoteWorkspace && options?.scanReservedNames !== false) {
+        void scanWindowsReservedDeviceNameFiles(baseServices.fileService, tab.workspacePath)
+          .then((result) => {
+            if (result.findings.length === 0) {
+              return;
+            }
+            const firstFinding = result.findings[0] ?? tab.workspacePath;
+            toast(
+              intl.formatMessage(
+                { id: "workspaceSidebar.windowsReservedNameRisk" },
+                { count: result.findings.length, path: firstFinding },
+              ),
+              { durationMs: 8_000, variant: "warning" },
+            );
+          })
+          .catch((error: unknown) => {
+            // Windows 保留设备名扫描只是移除后的兼容风险提示，失败不能影响 workspace 生命周期释放。
+            logger.debug("[WorkspaceSidebarItem] Windows 保留名风险扫描失败", {
+              workspaceKey,
+              error,
+            });
           });
-        });
-    }
-    return runtimeReleased;
-  }, [
-    baseServices.fileService,
-    closeTab,
-    intl,
-    isRemoteWorkspace,
-    tab.id,
-    tab.workspaceIdentity,
-    tab.workspacePath,
-    workspaceKeyForLog,
-    zcodeTaskService,
-  ]);
+      }
+      return runtimeReleased;
+    },
+    [
+      baseServices.fileService,
+      closeTab,
+      intl,
+      isRemoteWorkspace,
+      tab.id,
+      tab.workspaceIdentity,
+      tab.workspacePath,
+      workspaceKeyForLog,
+      zcodeTaskService,
+    ],
+  );
 
   const handleRemoveWorkspace = useCallback(async () => {
     logger.debug("[WorkspaceSidebarItem] 移除 workspace", {
@@ -445,6 +448,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   // 删除 ZCode 创建的 worktree。规范：docs/specs/git-worktree-task.md
   const { managedWorktree, deleteWorktree } = useManagedWorktreeDeletion({
     gitService: baseServices.gitService,
+    terminalService: baseServices.terminalService,
     workspacePath: tab.workspacePath,
     enabled: workspaceActionMenuOpen && !isRemoteWorkspace,
     confirmRemovingRunningWorkspace,

@@ -922,7 +922,9 @@ const zhCN: Record<string, string> = {
   "git.worktree.delete.done": "已删除 worktree，分支 {branchName} 已保留。",
   "git.worktree.delete.failed": "无法删除 worktree：{error}",
   "git.worktree.delete.failedAfterRelease":
-    "项目已从侧栏移除，但 worktree 目录 {path} 未能删除：{error}。目录与分支 {branchName} 均已保留。",
+    "项目已从侧栏移除，但 worktree 目录 {path} 未能完全删除：{error}。分支 {branchName} 已保留，点击重试可删除剩余内容。",
+  "git.worktree.delete.dirtyAfterRelease":
+    "确认后 {path} 中出现了新的未提交改动，因此没有删除。项目已从侧栏移除，分支 {branchName} 已保留。",
   "git.worktree.delete.retry": "重试",
   "git.worktree.createAction": "在新 worktree 中开始...",
   "git.worktree.dialog.title": "在新 worktree 中开始",

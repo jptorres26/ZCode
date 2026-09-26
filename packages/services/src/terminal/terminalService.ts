@@ -1,7 +1,8 @@
 import { accessSync, chmodSync, constants, existsSync, statSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir, release } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Emitter, type Event } from "@zcode/rpc";
 import type { IPty } from "node-pty";
 import type { ISettingService } from "../setting/setting.js";
@@ -21,6 +22,26 @@ interface TerminalInstance {
   pty: IPty;
   dataEmitter: Emitter<string>;
   exitEmitter: Emitter<number>;
+  /** 启动时的工作目录（真实路径），用于按目录结束终端。 */
+  cwd: string;
+  /** 进程退出时 resolve。 */
+  exited: Promise<void>;
+}
+
+/**
+ * 等待被结束的终端退出的上限。kill 已发出，这里只等操作系统回收进程；上限只保证删除流程不会无限挂起，
+ * 超出后调用方继续删除，失败时由其重试入口处理。
+ */
+const TERMINAL_EXIT_WAIT_MS = 5_000;
+
+/**
+ * `child` 是否为 `parent` 自身或其下的路径；Windows 不区分大小写。导出供单测使用。
+ * @lintignore
+ */
+export function isPathSameOrInside(child: string, parent: string, platform = process.platform) {
+  const normalize = (value: string) => (platform === "win32" ? value.toLowerCase() : value);
+  const relativePath = relative(normalize(parent), normalize(child));
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
 }
 
 let hasEnsuredNodePtyHelper = false;
@@ -393,14 +414,25 @@ export function createTerminalService(dependencies: {
       }
 
       p.onData((data) => dataEmitter.fire(data));
+      let markExited = () => {};
+      const exited = new Promise<void>((resolveExited) => {
+        markExited = resolveExited;
+      });
       p.onExit(({ exitCode }) => {
+        markExited();
         exitEmitter.fire(exitCode);
         dataEmitter.dispose();
         exitEmitter.dispose();
         terminals.delete(id);
       });
 
-      terminals.set(id, { pty: p, dataEmitter, exitEmitter });
+      terminals.set(id, {
+        pty: p,
+        dataEmitter,
+        exitEmitter,
+        cwd: await realpath(cwd).catch(() => cwd),
+        exited,
+      });
       return {
         id,
         shell,
@@ -422,6 +454,25 @@ export function createTerminalService(dependencies: {
 
     async dispose(params: { id: string }): Promise<void> {
       cleanupTerminal(params.id);
+    },
+
+    async disposeUnderPath(params: { path: string }): Promise<void> {
+      const target = await realpath(params.path).catch(() => resolve(params.path));
+      const exits: Promise<void>[] = [];
+      for (const [id, terminal] of Array.from(terminals.entries())) {
+        if (!isPathSameOrInside(terminal.cwd, target)) continue;
+        cleanupTerminal(id);
+        exits.push(terminal.exited);
+      }
+      if (exits.length === 0) return;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        Promise.all(exits),
+        new Promise<void>((resolveTimeout) => {
+          timer = setTimeout(resolveTimeout, TERMINAL_EXIT_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
     },
 
     onDynamicData(id: string): Event<string> {
