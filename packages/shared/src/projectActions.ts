@@ -25,9 +25,9 @@ export interface ProjectActionsConfig {
 // 修复原因（续）：Unicode 双向控制符（U+202A–U+202E、U+2066–U+2069）会让浏览器按与实际字节不同的顺序显示命令，
 // 零宽等格式字符、韩文填充符等默认不可见字符与行/段分隔符同样不可见；大段连续空白在自动换行后会把后续命令
 // 挤出可视区域。修复依据：命令拒绝 Cc（含 C1）、Cf、Zl、Zp、Default_Ignorable_Code_Point、盲文空白 U+2800，
-// 以及超过 16 个的连续空白。
+// 以及超过 16 个的连续空白。表情变体选择符 U+FE00–U+FE0F（如 ⚠️ 中的 U+FE0F）只改变字形、不隐藏内容，予以保留。
 const HIDDEN_IN_COMMAND =
-  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]|\s{17,}/u;
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u2800]|(?![\uFE00-\uFE0F])\p{Default_Ignorable_Code_Point}|\s{17,}/u;
 // 名称只用于显示：保留 ZWJ 表情与 LRM/RLM 等正常排版字符，只拒绝控制字符、行/段分隔符与会重排显示顺序的
 // 双向嵌入/覆盖/隔离符。
 const HIDDEN_IN_NAME = /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069]/u;

@@ -40,9 +40,10 @@ test("valid actions are trimmed, keyed, and extra fields are ignored", () => {
 test("names keep emoji ZWJ sequences and RLM, and commands allow short space runs", () => {
   const actions = [
     { name: "🧑\u200d💻 Dev", command: `pnpm dev${" ".repeat(16)}--port 3000` },
+    { name: "Warn", command: 'echo "\u26a0\ufe0f build failed" && echo "\u2714\ufe0f"' },
     { name: "בדיקה\u200f", command: "pnpm test" },
   ];
-  assert.equal(parseProjectActionsConfig(JSON.stringify({ actions })).actions.length, 2);
+  assert.equal(parseProjectActionsConfig(JSON.stringify({ actions })).actions.length, 3);
 });
 
 test("printable non-ASCII names and commands are allowed", () => {
