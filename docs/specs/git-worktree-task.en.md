@@ -29,7 +29,9 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
 2. Worktree root: `<ZCode data dir>/worktrees/<repo folder name>-<first 8 hex of sha256(repo root)>/<branch slug>`.
    The slug replaces characters outside `[A-Za-z0-9._-]` with `-`, and a Windows reserved
    device name (`con`, `prn`, `aux`, `nul`, `com1`–`com9` or `lpt1`–`lpt9` before the first `.`, any case)
-   gets a `wt-` prefix on every platform. If the directory exists, try `-2`,
+   gets a `wt-` prefix on every platform. A slug over 80 characters is cut and gets the first 8 hex
+   of the branch name's sha256 appended (common filesystems cap a path component at 255 bytes, which a
+   flattened long branch name can exceed). If the directory exists, try `-2`,
    `-3`, … (up to 99). It lives outside the repository so it never shows up in the original repo's
    file tree or `git status`.
 3. Run `git worktree prune` first (it only drops entries whose directory was deleted; otherwise a
@@ -87,7 +89,9 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
 - `ITerminalService.disposeUnderPath({ path })` ends every terminal whose starting cwd is that folder or
   inside it, and resolves once their processes have exited (with a 5-second cap that only keeps the
   delete flow from hanging). The terminal service owns every PTY, covering the side pane and the bottom
-  terminal.
+  terminal. A terminal still inside `create()` is registered before its first await; once marked
+  cancelled it ends as soon as it starts and `create()` rejects, and `disposeUnderPath` waits for that
+  too.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
   `getManagedWorktree` returns a value (queried when the menu opens).
   1. If the workspace has a running conversation, the existing "Remove" confirmation for running

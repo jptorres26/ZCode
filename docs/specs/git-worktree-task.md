@@ -23,7 +23,8 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
    因此当前检出中的冲突或进行中的 merge/rebase 不构成阻塞。
 2. worktree 根目录：`<ZCode 数据目录>/worktrees/<仓库目录名>-<仓库根路径 sha256 前 8 位>/<分支名 slug>`，
    slug 把 `[A-Za-z0-9._-]` 以外的字符替换为 `-`，Windows 保留设备名（首个 `.` 前为 `con`、`prn`、`aux`、`nul`、
-   `com1`–`com9`、`lpt1`–`lpt9`，不区分大小写）在所有平台加 `wt-` 前缀；目录已存在时依次追加 `-2`、`-3`…（最多 99）。
+   `com1`–`com9`、`lpt1`–`lpt9`，不区分大小写）在所有平台加 `wt-` 前缀；超过 80 个字符时截断并追加原分支名 sha256
+   的前 8 位（常见文件系统单段上限为 255 字节，扁平化后的长分支名会超出）；目录已存在时依次追加 `-2`、`-3`…（最多 99）。
    放在仓库外，避免出现在原仓库的文件树与 `git status` 中。
 3. 先执行 `git worktree prune`（只清理目录已被删除的登记项，否则手动删除过的同名目录会让 add 失败），再执行
    `git worktree add -b <branch> <path> HEAD`：新分支从当前 HEAD 创建。**未提交的改动不会带入新 worktree**。
@@ -65,7 +66,8 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   `<ZCode 数据目录>/worktrees/<仓库目录>/<worktree 目录>` 这一层、且已不是有效 Git 检出（没有 `.git`，或 `.git` 文件
   指向的管理目录已不存在）的目录，否则返回 `not-leftover`；目录已不存在视为成功。
 - `ITerminalService.disposeUnderPath({ path })`：结束所有初始 cwd 位于该目录（含自身）下的终端，并在进程退出后 resolve
-  （等待上限 5 秒，只防止删除流程无限挂起）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
+  （等待上限 5 秒，只防止删除流程无限挂起）。仍在 `create()` 中的终端在第一个 await 前即登记：被标记取消后，
+  启动即结束并以错误返回，`disposeUnderPath` 同样等待它结束。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
 - 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
   2. 破坏性确认：说明将删除的目录、保留的分支；

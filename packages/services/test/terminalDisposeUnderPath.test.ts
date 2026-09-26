@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isPathSameOrInside } from "../src/terminal/terminalService.js";
+import { isPathSameOrInside } from "../src/terminal/terminalDisposal.js";
 
 test("terminals started in the folder or below it are matched, siblings are not", () => {
   assert.equal(isPathSameOrInside("/wt/repo-1/feat", "/wt/repo-1/feat", "linux"), true);
