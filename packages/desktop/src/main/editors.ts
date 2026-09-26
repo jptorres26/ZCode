@@ -2,7 +2,7 @@
 /**
  * 编辑器检测与打开 —— 检测系统中已安装的编辑器/终端，获取图标，打开路径
  *
- * 当前支持 macOS / Windows。Linux 后续再补。
+ * 支持 macOS / Windows；Linux 的检测与图标见 linuxEditors.ts（docs/specs/open-in-editor-linux.md）。
  */
 
 import {
@@ -21,6 +21,7 @@ import { app, nativeImage } from "electron";
 import type { EditorInfo } from "@zcode/shared";
 import { getZCodeDataRootDir } from "@zcode/services/node";
 import { logger } from "./logger.js";
+import { getInstalledLinuxEditors } from "./linuxEditors.js";
 
 const require = createRequire(import.meta.url);
 const WINDOWS_EXPLORER_PATH = pathWin32.join(process.env.WINDIR ?? "C:/Windows", "explorer.exe");
@@ -87,6 +88,8 @@ const MAC_EDITOR_DEFS: EditorDef[] = [
     command: "subl",
   },
   { id: "codebuddy", name: "CodeBuddy", appPath: "/Applications/CodeBuddy.app", command: null },
+  // Codex desktop 提供 “Open in Xcode”；Xcode 没有随附打开目录的 CLI，走 `open -a` 路径。
+  { id: "xcode", name: "Xcode", appPath: "/Applications/Xcode.app", command: null },
   { id: "qoder", name: "Qoder", appPath: "/Applications/Qoder.app", command: null },
   // JetBrains 系列
   {
@@ -636,6 +639,11 @@ export function getAppIconDataUrl(editorId: string, appPath: string): Promise<st
  */
 export async function getInstalledEditors(): Promise<EditorInfo[]> {
   if (cachedEditors) {
+    return cachedEditors;
+  }
+
+  if (process.platform === "linux") {
+    cachedEditors = await getInstalledLinuxEditors();
     return cachedEditors;
   }
 
