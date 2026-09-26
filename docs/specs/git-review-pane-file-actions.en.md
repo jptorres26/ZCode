@@ -80,6 +80,10 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   `aria-label` and `ControlHintTooltip`): on pointer devices they appear on row hover / keyboard
   focus; on touch (`hover: none`) they are always visible, so mobile Web does not hide core actions.
 - The row context menu offers the same actions, driven by the same availability check.
+- The first context menu item is "Open file". It calls the side pane's existing
+  `onOpenCodeViewer` with `{ type: "file", title: <file name>, path: <absolute path> }`, opening
+  the working-tree version in the in-app file viewer. It is disabled for deleted files and hidden
+  when the host passes no `onOpenCodeViewer`. It is read-only, so every source offers it.
 - The pane header offers bulk actions to the left of Refresh (`size="lg" variant="ghost"`).
   When the source picker and the action group don't fit on one line, the whole group wraps to
   the next line, right-aligned, and never overlaps the source picker (the mobile web side pane is
@@ -101,7 +105,9 @@ workspace is not a repository. No actions render for datasets with `readonly ===
 5. Conflicted files show no Discard; the service rejects a discard request for a conflicted path
    and modifies nothing.
 6. Unstaging in a repository without commits keeps the worktree file.
-7. The `branch` / `last-turn` sources show no actions.
+7. The `branch` / `last-turn` sources show no Stage / Unstage / Discard actions.
+8. Choosing "Open file" from a row's context menu adds a preview tab for that file to the side
+   pane; for a deleted file the item is disabled.
 
 Automated coverage: `packages/services/test/gitPathMutations.test.ts` (real temporary
 repositories for 2–6) and `packages/ui/test/gitPaneFileActions.test.ts` (action matrix and bulk

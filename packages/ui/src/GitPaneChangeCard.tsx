@@ -3,6 +3,7 @@ import type { GitDiffResult } from "@zcode/shared";
 import {
   ChevronDownIcon,
   CopyIcon,
+  FileIcon,
   FolderOpenIcon,
   ListTreeIcon,
   MinusIcon,
@@ -53,11 +54,13 @@ export function GitPaneChangeCard({
   onCopyRelativePath,
   onFileAction,
   onOpenChange,
+  onOpenFile,
   onRevealInFileManager,
   onRevealInFileTree,
 }: {
   change: GitPaneFileChange;
   contextMenuLabels: {
+    openFile: string;
     copyAbsolutePath: string;
     copyRelativePath: string;
     revealInFileManager: string;
@@ -79,6 +82,8 @@ export function GitPaneChangeCard({
   onCopyAbsolutePath: (change: GitPaneFileChange) => void;
   onCopyRelativePath: (change: GitPaneFileChange) => void;
   onOpenChange: (change: GitPaneFileChange, nextOpen: boolean) => void;
+  /** 在应用内文件预览中打开；规范：docs/specs/git-review-pane-file-actions.md */
+  onOpenFile?: (change: GitPaneFileChange) => void;
   onRevealInFileManager: (change: GitPaneFileChange) => void;
   onRevealInFileTree?: (change: GitPaneFileChange) => void;
 }) {
@@ -187,6 +192,18 @@ export function GitPaneChangeCard({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
+          {onOpenFile ? (
+            <>
+              <ContextMenuItem
+                disabled={change.kind === "deleted"}
+                onSelect={() => onOpenFile(change)}
+              >
+                <FileIcon className="size-4" />
+                {contextMenuLabels.openFile}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          ) : null}
           {fileActions.map((action) => {
             const Icon = FILE_ACTION_ICONS[action];
             return (
