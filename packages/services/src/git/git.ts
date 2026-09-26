@@ -16,6 +16,7 @@ import type {
   GitIgnoredPathsRequest,
   GitLocalBranchListResult,
   GitPathMutationRequest,
+  GitPullRequestLink,
   GitPushRequest,
   GitPushResult,
   GitRefreshRequest,
@@ -48,6 +49,8 @@ export interface IGitService {
   ): Promise<GitGenerateCommitMessageResult>;
   commit(params: GitCommitRequest): Promise<GitCommitResult>;
   push(params: GitPushRequest): Promise<GitPushResult>;
+  /** 当前分支上游对应的托管平台新建 PR 链接；无上游或未知平台时为 null。规范：docs/specs/git-pull-request-link.md */
+  getPullRequestLink(params: GitRepositoryRequest): Promise<GitPullRequestLink | null>;
   getIdentity(params: GitRepositoryRequest): Promise<GitIdentity>;
   refresh(params: GitRefreshRequest): Promise<GitRefreshResult>;
 }

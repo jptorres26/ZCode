@@ -849,6 +849,8 @@ const zhCN: Record<string, string> = {
   "git.commit.placeholder": "输入 commit message（当前为 UI 占位，不会真正执行 git commit）",
   "git.actionMenu.trigger": "提交或推送",
   "git.actionMenu.trigger.ariaLabel": "提交或推送",
+  "git.actionMenu.pullRequest.create": "创建拉取请求",
+  "git.actionMenu.pullRequest.createMergeRequest": "创建合并请求",
   "git.actionMenu.push": "推送",
   "git.actionMenu.commitDialog.title": "提交更改",
   "git.actionMenu.commitDialog.description": "将当前 workspace 内的未提交更改保存为一次提交。",

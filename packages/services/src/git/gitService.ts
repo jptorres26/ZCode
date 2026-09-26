@@ -314,6 +314,10 @@ export function createGitService(options?: {
       return result;
     },
 
+    async getPullRequestLink(params) {
+      return await repo.getPullRequestLink(params.workspacePath);
+    },
+
     async getIdentity(params) {
       return await repo.getIdentity(params.workspacePath);
     },
