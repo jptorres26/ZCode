@@ -16,7 +16,7 @@ export interface GitPaneFileActionContext {
 
 type GitPaneActionableChange = Pick<
   GitFileChange,
-  "path" | "section" | "kind" | "isConflicted" | "isUntracked"
+  "path" | "repoRelativePath" | "section" | "kind" | "isConflicted" | "isUntracked"
 >;
 
 function isConflictedChange(change: GitPaneActionableChange): boolean {
@@ -46,6 +46,8 @@ export interface GitPaneBulkActionPlan {
   discardPaths: string[];
   /** 批量丢弃中会从磁盘删除的新文件数量（未跟踪，或已暂存的新增文件），用于确认文案。 */
   discardDeletedFileCount: number;
+  /** 其中折叠显示的未跟踪目录（`dir/`）数量：整个目录连同内容都会被删除，不能按一个文件计。 */
+  discardDeletedFolderCount: number;
 }
 
 export function getGitPaneBulkActionPlan(
@@ -57,6 +59,7 @@ export function getGitPaneBulkActionPlan(
     unstagePaths: [],
     discardPaths: [],
     discardDeletedFileCount: 0,
+    discardDeletedFolderCount: 0,
   };
   for (const change of changes) {
     const actions = getGitPaneFileActions(change, context);
@@ -68,7 +71,10 @@ export function getGitPaneBulkActionPlan(
     }
     if (actions.includes("discard")) {
       plan.discardPaths.push(change.path);
-      if (gitPaneDiscardDeletesFile(change, context.sourceId)) {
+      const deletion = getGitPaneDiscardDeletion(change, context.sourceId);
+      if (deletion === "folder") {
+        plan.discardDeletedFolderCount += 1;
+      } else if (deletion === "file") {
         plan.discardDeletedFileCount += 1;
       }
     }
@@ -85,6 +91,21 @@ export function gitPaneDiscardDeletesFile(
   sourceId: GitChangeSourceId,
 ): boolean {
   return change.isUntracked || (sourceId === "staged" && change.kind === "added");
+}
+
+/**
+ * 丢弃会从磁盘删除的内容：单个文件、整个未跟踪目录，或不删除。
+ * 修复原因：git status 输出超限后改用 `--untracked-files=normal`，整个未跟踪目录只显示为一条 `dir/`，
+ * 而 `git clean -f -- dir/` 会递归删除其中所有文件；按“一个新文件”计数会明显低估损失。
+ * 修复依据：`repoRelativePath` 以 `/` 结尾的未跟踪条目单独按目录计（绝对路径 `path` 经 resolve 后不再带 `/`），
+ * 确认文案说明目录及其全部内容会被删除。
+ */
+export function getGitPaneDiscardDeletion(
+  change: Pick<GitFileChange, "repoRelativePath" | "kind" | "isUntracked">,
+  sourceId: GitChangeSourceId,
+): "file" | "folder" | null {
+  if (!gitPaneDiscardDeletesFile(change, sourceId)) return null;
+  return change.isUntracked && change.repoRelativePath.endsWith("/") ? "folder" : "file";
 }
 
 /** `discardPaths` 的 staged 参数：staged 来源要同时恢复 index 与工作区。 */
