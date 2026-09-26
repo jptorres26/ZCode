@@ -29,6 +29,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  readlink,
   realpath,
   symlink,
 } from "node:fs/promises";
@@ -1169,11 +1170,40 @@ async function writeJsonFile(filePath: string, value: Record<string, unknown>): 
   // Windows 上目标被短暂占用时 rename 直接失败。
   // 修复依据：复用共享的 atomicWritePrivateTextFile（0600 + EPERM/EBUSY/EACCES 重试），
   // 并先解析符号链接，把内容原子写到链接指向的真实文件。
-  const targetPath = await realpath(filePath).catch((error: unknown) => {
-    if (isFileNotFoundError(error)) return filePath;
-    throw error;
-  });
+  const targetPath = await resolveConfigWriteTarget(filePath);
   await atomicWritePrivateTextFile(targetPath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** 与 Linux SYMLOOP_MAX 一致，防止链接成环。 */
+const MAX_SYMLINK_HOPS = 40;
+
+/**
+ * 解析配置文件的实际写入位置：已存在的文件取 realpath；不存在时逐级跟随符号链接。
+ * 修复原因：realpath 对悬空链接（目标尚未创建，常见于刚部署的 dotfiles）同样报 ENOENT，旧逻辑把它当作
+ * “路径不存在”，rename 会覆盖链接本身，把可能含密钥的配置写到工作区而不是链接指向的位置。
+ * 修复依据：lstat/readlink 逐级跟随到第一个非链接或不存在的路径；相对目标按链接所在目录的真实路径解析。
+ */
+async function resolveConfigWriteTarget(filePath: string): Promise<string> {
+  try {
+    return await realpath(filePath);
+  } catch (error) {
+    if (!isFileNotFoundError(error)) throw error;
+  }
+  let current = filePath;
+  for (let hop = 0; hop < MAX_SYMLINK_HOPS; hop += 1) {
+    let isLink: boolean;
+    try {
+      isLink = (await lstat(current)).isSymbolicLink();
+    } catch (error) {
+      if (isFileNotFoundError(error)) return current;
+      throw error;
+    }
+    if (!isLink) return current;
+    const linkTarget = await readlink(current);
+    const linkDir = await realpath(dirname(current)).catch(() => dirname(current));
+    current = resolve(linkDir, linkTarget);
+  }
+  throw new Error(`Too many levels of symbolic links: ${filePath}`);
 }
 
 async function addPluginDirToConfig(filePath: string, pluginPath: string): Promise<void> {
