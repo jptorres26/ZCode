@@ -1,6 +1,6 @@
 import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
 import { nanoid } from "nanoid";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CodeCommentAnnotation, CommentDraft } from "@/components/ui/code-viewer.js";
 import type { DiffViewerSelectedLineRange } from "@/components/ui/diff-viewer.js";
 import {
@@ -19,6 +19,9 @@ import {
   type CodeCommentPreview,
 } from "@/lib/codeCommentContext.js";
 import { useCodeCommentPreviewStore } from "@/store/codeCommentPreviewStore.js";
+
+/** 草稿在开始时就记下引用的代码，避免 diff 刷新后提交时引用了不同的内容。 */
+type DiffCommentDraft = DiffCommentRange & { selectedText: string };
 
 type DiffCommentAnnotationMetadata =
   | { kind: "draft"; range: DiffCommentRange }
@@ -40,6 +43,8 @@ export interface GitPaneDiffCommentTarget {
   workspaceIdentity?: string;
   /** 文件绝对路径，与文件预览的评论分桶一致。 */
   sourcePath: string;
+  /** 新侧是否就是工作区文件（unstaged 来源）；只有这时才与文件预览共享行内评论。 */
+  sharesWorkingTree: boolean;
   sourceTitle: string;
   beforeContent: string | null;
   afterContent: string | null;
@@ -58,10 +63,19 @@ export function useGitPaneDiffComments(target: GitPaneDiffCommentTarget | null):
 } {
   const { intl } = useZCodeIntl();
   const labels = useCodeCommentLabels();
-  const [draft, setDraft] = useState<DiffCommentRange | null>(null);
+  const [draft, setDraft] = useState<DiffCommentDraft | null>(null);
   const [draftText, setDraftText] = useState("");
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const enabled = target !== null;
-  const bucket = target
+  // 修复原因：卡片折叠后草稿状态仍保留，重新展开会出现旧草稿。修复依据：target 为空（折叠/不可评论）时清空。
+  useEffect(() => {
+    if (!enabled) {
+      setDraft(null);
+      setDraftText("");
+    }
+  }, [enabled]);
+  const bucket = target?.sharesWorkingTree
     ? {
         workspacePath: target.workspacePath,
         workspaceIdentity: target.workspaceIdentity,
@@ -85,10 +99,21 @@ export function useGitPaneDiffComments(target: GitPaneDiffCommentTarget | null):
 
   const startDraft = useCallback((selection: DiffLineSelection | null) => {
     const range = selection ? normalizeDiffCommentRange(selection) : null;
-    if (range) {
-      setDraft(range);
-      setDraftText("");
+    const current = targetRef.current;
+    if (!range || !current) {
+      return;
     }
+    // 修复原因：之前在提交时才按当前 diff 取文本，自动刷新改变内容后会引用与所选不同的代码。
+    // 修复依据：开始草稿时按所选侧取文本并随草稿保存。
+    const selectedText = getDiffCommentSelectedText(
+      {
+        contents: range.side === "deletions" ? current.beforeContent : current.afterContent,
+        patch: current.patch,
+      },
+      range,
+    );
+    setDraft({ ...range, selectedText });
+    setDraftText("");
   }, []);
 
   const cancelDraft = useCallback(() => {
@@ -100,13 +125,7 @@ export function useGitPaneDiffComments(target: GitPaneDiffCommentTarget | null):
     if (!target || !draft) {
       return;
     }
-    const selectedText = getDiffCommentSelectedText(
-      {
-        contents: draft.side === "deletions" ? target.beforeContent : target.afterContent,
-        patch: target.patch,
-      },
-      draft,
-    );
+    const { selectedText } = draft;
     if (!selectedText.trim()) {
       return;
     }
@@ -129,9 +148,10 @@ export function useGitPaneDiffComments(target: GitPaneDiffCommentTarget | null):
     });
     setDraft(null);
     setDraftText("");
-    // 旧版本行号无法与工作区文件对齐，L 侧评论只进入输入框附件。
+    // 旧版本（L 侧）或非工作区新侧（staged/branch）的行号无法与工作区文件对齐，只进入输入框附件。
     if (
       side !== "R" ||
+      !target.sharesWorkingTree ||
       isCodeCommentMarkedRemoved({
         id,
         workspacePath: target.workspacePath,
@@ -203,7 +223,10 @@ export function useGitPaneDiffComments(target: GitPaneDiffCommentTarget | null):
       annotations.push({
         side: draft.side,
         lineNumber: draft.endLine,
-        metadata: { kind: "draft", range: draft } satisfies DiffCommentAnnotationMetadata,
+        metadata: {
+          kind: "draft",
+          range: { side: draft.side, startLine: draft.startLine, endLine: draft.endLine },
+        } satisfies DiffCommentAnnotationMetadata,
       });
     }
     return annotations;

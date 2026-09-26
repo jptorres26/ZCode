@@ -91,7 +91,11 @@ export function GitPaneChangeCard({
   onRevealInFileManager: (change: GitPaneFileChange) => void;
   onRevealInFileTree?: (change: GitPaneFileChange) => void;
   /** 提供时富 diff 支持行评论。规范：docs/specs/git-review-pane-diff-comments.md */
-  commentWorkspace?: { workspacePath: string; workspaceIdentity?: string };
+  commentWorkspace?: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+    sharesWorkingTree: boolean;
+  };
   absolutePath: string;
 }) {
   const { intl } = useZCodeIntl();
