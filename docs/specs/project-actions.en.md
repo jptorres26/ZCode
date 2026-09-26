@@ -57,9 +57,11 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
 - Clicking an item opens a new terminal tab in the side pane (titled with the action name, cwd at
   the workspace root) and runs the command as that terminal's first input.
   - The first input is held in an in-memory, take-once registry, `pendingTerminalCommands`, keyed by
-    the terminal tab id. As soon as the terminal session has created its PTY, it takes the command and
-    writes `command + "\r"` **immediately** (like VS Code's `sendText`; the TTY buffers it until the
-    shell reads it); taking it removes it. It does not wait for the first output: the host doesn't
+    the terminal tab id. As soon as the terminal session has created its PTY and registered its output
+    and exit subscriptions, it takes the command and writes `command + "\r"` **immediately**, like VS Code's
+    `sendText`; the TTY buffers it until the shell reads it, and taking it removes it. The exit
+    subscription comes first, so a command like `exit` that ends the shell at once can't lose its exit
+    event. It does not wait for the first output: the host doesn't
     buffer output emitted before the subscription, so with remote latency the prompt can go out
     before the subscription exists, and waiting would glue the command onto the user's first
     keystroke. On Windows, ConPTY's first output isn't the prompt either. The command is never stored in tab state, so a reload or restored tab never runs it

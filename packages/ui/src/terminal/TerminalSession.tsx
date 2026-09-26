@@ -590,14 +590,6 @@ export function TerminalSession({
               term.write(normalizePowerShellReadlineRedraw(data, shell));
             }),
           );
-          // 项目操作的一次性首条输入。规范：docs/specs/project-actions.md
-          // 修复原因：之前等第一段输出再写入，但宿主不缓冲订阅前的输出；远程延迟下提示符可能早于订阅发出，
-          // 命令会等到用户第一次按键的回显才写入，拼成错误命令（Windows ConPTY 的首段输出也不是提示符）。
-          // 修复依据：与 VS Code sendText 一致，PTY 创建完成即写入，由 TTY 缓冲到 shell 读取，不依赖输出时序。
-          const pendingCommand = takePendingTerminalCommand(persistentKey);
-          if (pendingCommand !== undefined) {
-            void services.terminalService.write({ id, data: `${pendingCommand}\r` });
-          }
           // exit 订阅（进 registry，与原路径对称：有 onExit 则回调，否则写退出提示）
           registryDisposers.push(
             services.terminalService.onDynamicExit(id)((exitCode) => {
@@ -616,6 +608,16 @@ export function TerminalSession({
               term.write(`\r\n${exitedMessageRef.current}\r\n`);
             }),
           );
+          // 项目操作的一次性首条输入。规范：docs/specs/project-actions.md
+          // 修复原因：之前等第一段输出再写入，但宿主不缓冲订阅前的输出；远程延迟下提示符可能早于订阅发出，
+          // 命令会等到用户第一次按键的回显才写入，拼成错误命令（Windows ConPTY 的首段输出也不是提示符）。
+          // 修复依据：与 VS Code sendText 一致，PTY 创建完成即写入，由 TTY 缓冲到 shell 读取，不依赖输出时序。
+          // 修复原因（续）：命令若立即结束 shell（如 exit），退出事件可能早于 exit 订阅到达宿主而丢失，标签看似仍在运行。
+          // 修复依据：在 data 与 exit 订阅都登记之后再写入；RPC 按序处理，宿主先有订阅再执行命令。
+          const pendingCommand = takePendingTerminalCommand(persistentKey);
+          if (pendingCommand !== undefined) {
+            void services.terminalService.write({ id, data: `${pendingCommand}\r` });
+          }
 
           // onData（进 registry，随 term 常驻）：
           // 不能放 localDisposers：cleanup(detach) 时会被取消，而复用路径不重绑，
