@@ -43,6 +43,7 @@ export type {
   WSLConnectOptions,
 } from "./remoteTarget.js";
 export { stripRemoteTargetSecrets } from "./remoteTarget.js";
+export { isExternalOpenAllowedUrl } from "./externalOpenUrl.js";
 export { buildSshRemoteHostKey } from "./remoteSshHostKey.js";
 export { buildRemoteEnvironmentKey } from "./remoteEnvironmentKey.js";
 export type {

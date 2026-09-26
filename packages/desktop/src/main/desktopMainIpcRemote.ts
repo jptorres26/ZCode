@@ -1,5 +1,4 @@
 /* eslint-disable max-lines -- 远程连接、OAuth 回调、遥测和通知 IPC 共用窗口级上下文，集中注册避免跨文件状态漂移。 */
-import { extname } from "node:path";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import armsRum from "@arms/rum-electron";
 import {
@@ -9,6 +8,7 @@ import {
   formatZodError,
   normalizeUnknownError,
   InternalChannels,
+  isExternalOpenAllowedUrl,
   isTrustedCodingPlanWebviewOrigin,
   resolveZaiBusinessBaseUrl,
   PlatformChannels,
@@ -35,29 +35,6 @@ import {
   type RemoteConnectionStats,
 } from "./desktopRemoteUsageArmsTelemetry.js";
 import { openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
-
-// file: 只服务于 html 引用卡在没有 openExternalFile 时的回退（OpenSplitButton.handleOpenExternal）。
-const EXTERNAL_OPEN_FILE_URL_EXTENSIONS: ReadonlySet<string> = new Set([".html", ".htm"]);
-
-function isAllowedExternalOpenUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      return true;
-    }
-    if (url.protocol === "file:") {
-      // shell.openExternal 会把 file: 交给系统 opener，.app/.command/.exe 等会被直接执行；
-      // 之前对任意 file: 放行意味着消息里一条助手写出的链接就能启动本地可执行文件。
-      // 这里只放行浏览器可渲染的 html 文档，其他本地文件走 OpenExternalFile。
-      return EXTERNAL_OPEN_FILE_URL_EXTENSIONS.has(
-        extname(decodeURIComponent(url.pathname)).toLowerCase(),
-      );
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
 
 interface OpenExternalRequest {
   sourceUrl?: string;
@@ -290,7 +267,7 @@ export function registerRemoteIpcHandlers(options: {
       return;
     }
     const { url } = request;
-    if (!isAllowedExternalOpenUrl(url)) {
+    if (!isExternalOpenAllowedUrl(url)) {
       options.logger.warn("[open-external] blocked unsupported url", url);
       return;
     }
