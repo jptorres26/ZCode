@@ -8,8 +8,13 @@ export interface CodeCommentRange {
   endLine: number;
 }
 
+/** diff 中评论所在侧：L = 旧版本行号，R = 新版本行号。规范：docs/specs/git-review-pane-diff-comments.md */
+export type CodeCommentSide = "L" | "R";
+
 export interface CodeCommentPayload extends CodeCommentRange {
   id?: string;
+  /** 缺省为 R（文件预览与 diff 新增侧）。 */
+  side?: CodeCommentSide;
   workspacePath: string;
   workspaceIdentity?: string;
   sourcePath?: string;
@@ -116,6 +121,7 @@ export function isCodeCommentPayload(payload: unknown): payload is CodeCommentPa
     candidate.sourceTitle.length > 0 &&
     typeof candidate.selectedText === "string" &&
     typeof candidate.comment === "string" &&
+    (candidate.side === undefined || candidate.side === "L" || candidate.side === "R") &&
     Number.isFinite(candidate.startLine) &&
     Number.isFinite(candidate.endLine)
   );
@@ -127,7 +133,7 @@ function buildCodeCommentMarkdown(payload: CodeCommentPayload) {
       ? String(payload.startLine)
       : `${payload.startLine}-${payload.endLine}`;
 
-  return `## Comment\nFile: ${payload.sourcePath ?? payload.sourceTitle}\nSide: R\nLines: ${lineLabel}\nSelected text:\n\`\`\`\n${payload.selectedText.trim()}\n\`\`\`\nComment:\n${payload.comment.trim()}\n`;
+  return `## Comment\nFile: ${payload.sourcePath ?? payload.sourceTitle}\nSide: ${payload.side ?? "R"}\nLines: ${lineLabel}\nSelected text:\n\`\`\`\n${payload.selectedText.trim()}\n\`\`\`\nComment:\n${payload.comment.trim()}\n`;
 }
 
 function buildCodeCommentsBlock(attachments: readonly CodeCommentComposerAttachment[]) {
@@ -186,6 +192,7 @@ function parseCodeCommentItem(
 ): CodeCommentComposerAttachment | null {
   const fileMatch = /^File:\s*(.+)$/m.exec(rawItem);
   const linesMatch = /^Lines:\s*(.+)$/m.exec(rawItem);
+  const sideMatch = /^Side:\s*([LR])\s*$/m.exec(rawItem);
   const selectedTextMatch =
     /Selected text:\s*\n```(?:[^\n`]*)?\n([\s\S]*?)\n```\s*\nComment:\s*\n?([\s\S]*)$/m.exec(
       rawItem,
@@ -216,6 +223,7 @@ function parseCodeCommentItem(
     ...(workspaceIdentity ? { workspaceIdentity } : {}),
     sourcePath,
     sourceTitle: getSourceTitle(sourcePath),
+    ...(sideMatch?.[1] === "L" ? { side: "L" as const } : {}),
     startLine: range.startLine,
     endLine: range.endLine,
     selectedText: selectedText.trim(),
