@@ -90,3 +90,14 @@ export function toFileUrl(path: string): string {
 
   return encodeUriPathForFileUrl(normalizedPath);
 }
+
+/** `child` 是否为 `parent` 自身或其下的路径；兼容 `/` 与 `\\`，Windows 盘符路径不区分大小写。 */
+export function isSameOrInsidePath(child: string, parent: string): boolean {
+  const normalize = (value: string) => {
+    const slashed = value.replace(/\\/g, "/").replace(/\/+$/, "");
+    return /^[A-Za-z]:/.test(slashed) ? slashed.toLowerCase() : slashed;
+  };
+  const normalizedChild = normalize(child);
+  const normalizedParent = normalize(parent);
+  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`);
+}
