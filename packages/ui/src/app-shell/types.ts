@@ -240,6 +240,8 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
   handleOpenTerminalTab: () => void;
   /** 项目操作：规范 docs/specs/project-actions.md */
   handleRunProjectAction: (action: { name: string; command: string }) => void;
+  /** 草稿转正时把草稿态打开的侧栏 tab 交给新会话。 */
+  handleAdoptDraftSidePaneTabs: (taskId: string) => void;
   handleToggleGit: () => void;
   handleOpenGitReview: (sourceId?: GitChangeSourceId) => void;
   handleToggleSidePane: () => void;

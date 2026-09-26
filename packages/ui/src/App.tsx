@@ -233,6 +233,7 @@ export function App({
     handleOpenDeveloperTools,
     handleOpenTerminalTab,
     handleRunProjectAction,
+    handleAdoptDraftSidePaneTabs,
     handleOpenSubagentSession,
     handleOpenBackgroundBash,
     handleOpenSubagentDirectory,
@@ -1260,6 +1261,7 @@ export function App({
         handleOpenDeveloperTools={handleOpenDeveloperTools}
         handleOpenTerminalTab={handleOpenTerminalTabIfWritable}
         handleRunProjectAction={handleRunProjectActionIfWritable}
+        handleAdoptDraftSidePaneTabs={handleAdoptDraftSidePaneTabs}
         handleToggleGit={handleToggleGitIfWritable}
         handleToggleSidePane={handleToggleSidePane}
         handleOpenBrowserUrl={handleOpenBrowserUrl}

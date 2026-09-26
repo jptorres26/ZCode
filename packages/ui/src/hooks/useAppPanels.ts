@@ -28,6 +28,7 @@ import {
   openModelTrajectorySidePane,
   openTerminalSidePane,
   createTerminalSidePaneTabId,
+  adoptDraftSidePaneTabs,
   openSubagentSessionSidePane,
   openSubagentDirectorySidePane,
   openSelectionSideChatPane,
@@ -840,6 +841,20 @@ export function useAppPanels(options: {
     ],
   );
 
+  // 草稿转正：会话创建时把草稿态打开的 tab 交给新会话（只在当前处于草稿时）。
+  const handleAdoptDraftSidePaneTabs = useCallback(
+    (taskId: string) => {
+      if (sidePaneOwnerIdRef.current !== null) return;
+      commitSidePaneState((current) =>
+        adoptDraftSidePaneTabs(current, {
+          workspaceKey: activeWorkspaceKeyRef.current,
+          taskId,
+        }),
+      );
+    },
+    [commitSidePaneState],
+  );
+
   // 新建 worktree 后的 setup 命令：登记发生在切换 workspace 之前，这里在新 workspace key 生效后取出一次。
   // 规范：docs/specs/git-worktree-task.md
   useEffect(() => {
@@ -1629,6 +1644,7 @@ export function useAppPanels(options: {
     handleOpenDeveloperTools,
     handleOpenTerminalTab,
     handleRunProjectAction,
+    handleAdoptDraftSidePaneTabs,
     handleOpenModelTrajectory,
     handleOpenSubagentSession,
     handleOpenBackgroundBash,

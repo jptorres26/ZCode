@@ -304,6 +304,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   handleOpenDeveloperTools,
   handleOpenTerminalTab,
   handleRunProjectAction,
+  handleAdoptDraftSidePaneTabs,
   handleToggleGit,
   handleOpenGitReview,
   handleToggleSidePane,
@@ -1171,9 +1172,11 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   // createSession/fork 后接入既有选择路径；删除会话后回 draft。
   const handleV4SessionCreated = useCallback(
     (sessionId: string) => {
+      // 先移交草稿态 tab 的归属，再切到新会话，避免 Setup 终端等草稿 tab 在转正后被隐藏。
+      handleAdoptDraftSidePaneTabs(sessionId);
       handleSelectTask(workspaceAbsPath, sessionId, workspaceIdentity);
     },
-    [handleSelectTask, workspaceAbsPath, workspaceIdentity],
+    [handleAdoptDraftSidePaneTabs, handleSelectTask, workspaceAbsPath, workspaceIdentity],
   );
   // 草稿态 composer contextHeader：workspace 切换菜单 +
   // Git 分支切换器，与旧 ChatView 空态 contextHeaderContent 同构。壳级能力
