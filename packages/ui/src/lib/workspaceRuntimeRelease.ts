@@ -8,9 +8,10 @@ export function releaseWorkspaceRuntimeAfterProjectRemoval({
 }: {
   tab: Pick<WorkspaceTabState, "workspacePath" | "workspaceIdentity">;
   zcodeTaskService: Pick<IZCodeTaskService, "releaseWorkspacePreparation">;
-}): void {
+}): Promise<void> {
   const workspaceIdentity = tab.workspaceIdentity?.trim() || undefined;
-  void zcodeTaskService
+  // 返回可等待的 Promise（失败只记录、不抛出）：删除 worktree 需要在释放完成后再删目录。
+  return zcodeTaskService
     .releaseWorkspacePreparation({
       workspacePath: tab.workspacePath,
       ...(workspaceIdentity ? { workspaceIdentity } : {}),

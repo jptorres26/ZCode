@@ -865,6 +865,10 @@ const enUS: Record<string, string> = {
   "git.fileAction.discardConfirmDescription": "This can't be undone.",
   "git.fileAction.discardConfirmDeletesDescription":
     "{count} new file(s) will be deleted from disk. This can't be undone.",
+  "git.fileAction.discardConfirmDeletesFoldersOnlyDescription":
+    "{folderCount} untracked folder(s), with everything inside them, will be deleted from disk. This can't be undone.",
+  "git.fileAction.discardConfirmDeletesFoldersDescription":
+    "{folderCount} untracked folder(s), with everything inside them, and {fileCount} other new file(s) will be deleted from disk. This can't be undone.",
   "git.fileAction.failed": "Git operation failed: {message}",
   "git.action.commit": "Commit",
   "git.action.showTree": "Show file tree",
@@ -988,6 +992,9 @@ const enUS: Record<string, string> = {
   "git.worktree.delete.forceConfirm": "Delete anyway",
   "git.worktree.delete.done": "Worktree deleted. The branch {branchName} is kept.",
   "git.worktree.delete.failed": "Couldn't delete the worktree: {error}",
+  "git.worktree.delete.failedAfterRelease":
+    "The project was removed from the sidebar, but its worktree folder {path} couldn't be deleted: {error}. The folder and the branch {branchName} are kept.",
+  "git.worktree.delete.retry": "Retry",
   "git.worktree.createAction": "Start in new worktree...",
   "git.worktree.dialog.title": "Start in a new worktree",
   "git.worktree.dialog.description":

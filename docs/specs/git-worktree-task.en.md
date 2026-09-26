@@ -27,7 +27,9 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
    issue and creates no worktree. The worktree starts from HEAD and does not touch the current
    checkout, so conflicts or a merge/rebase in progress there do not block it.
 2. Worktree root: `<ZCode data dir>/worktrees/<repo folder name>-<first 8 hex of sha256(repo root)>/<branch slug>`.
-   The slug replaces characters outside `[A-Za-z0-9._-]` with `-`. If the directory exists, try `-2`,
+   The slug replaces characters outside `[A-Za-z0-9._-]` with `-`, and a Windows reserved
+   device name (`con`, `prn`, `aux`, `nul`, `com1`–`com9` or `lpt1`–`lpt9` before the first `.`, any case)
+   gets a `wt-` prefix on every platform. If the directory exists, try `-2`,
    `-3`, … (up to 99). It lives outside the repository so it never shows up in the original repo's
    file tree or `git status`.
 3. Run `git worktree prune` first (it only drops entries whose directory was deleted; otherwise a
@@ -58,12 +60,13 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
   the main checkout) and its root is under `<ZCode data dir>/worktrees/`. Repositories or worktrees the
   user created themselves get no delete entry.
 - `IGitService.getManagedWorktree({ workspacePath })` returns `{ worktreePath, mainWorktreePath,
-branchName }` when those conditions hold, otherwise `null` (the main checkout and branch come from
-  `git worktree list --porcelain`).
+branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null` (the main checkout
+  and branch come from `git worktree list --porcelain`; `hasUncommittedChanges` says whether
+  `git status` showed changes, including untracked files, when it was read, and counts as true if that
+  read fails).
 - `IGitService.removeWorktree({ workspacePath, force? })`:
   - Conditions not met → `{ ok: false, reason: "not-managed" }`.
-  - Without `force`, a worktree with uncommitted changes (including untracked files) →
-    `{ ok: false, reason: "dirty" }`, and nothing is deleted.
+  - Without `force`, uncommitted changes → `{ ok: false, reason: "dirty" }`, and nothing is deleted.
   - Runs `git worktree remove [--force] <worktreePath>` in the main checkout; failure →
     `{ ok: false, reason: "failed", detail }`.
   - Success → `{ ok: true, mainWorktreePath, branchName }`. **The branch and its commits are kept**;
@@ -73,17 +76,44 @@ branchName }` when those conditions hold, otherwise `null` (the main checkout an
   1. If the workspace has a running conversation, the existing "Remove" confirmation for running
      workspaces comes first.
   2. A destructive confirmation names the folder that will be deleted and the branch that is kept.
-  3. It calls `removeWorktree`. On `dirty`, a second confirmation says uncommitted changes will be lost
-     for good, and confirming retries with `force`.
-  4. On success it does the same cleanup as "Remove" (close the tab, release the runtime, invalidate
-     the task cache) and says the branch was kept. Failures show a toast.
+  3. It calls `getManagedWorktree` again for the current state. With uncommitted changes, a second
+     confirmation says they will be lost for good, and confirming deletes with `force`. **Every
+     confirmation happens before anything is released**, so cancelling at any step has no effect.
+  4. It does the same cleanup as "Remove" (close the tab, which disposes its terminals; release the
+     runtime; invalidate the task cache) and **waits for the runtime release to finish**.
+  5. Only then does it call `removeWorktree`. Release comes first because on Windows an Agent or
+     terminal process whose cwd is inside the folder locks it, so removing first fails or deletes only
+     some of the files.
+  6. On success it says the branch was kept. On failure the project is already gone from the sidebar;
+     a toast says the folder and branch are kept and offers "Retry", which calls `removeWorktree`
+     again when the user clicks it (no timed retry).
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant H as useManagedWorktreeDeletion
+  participant S as WorkspaceSidebarItem (Remove cleanup)
+  participant R as zcodeTaskService
+  participant G as IGitService
+  U->>H: Delete worktree
+  H->>U: running confirmation → destructive confirmation
+  H->>G: getManagedWorktree (current state)
+  H->>U: if changes: discard confirmation
+  H->>S: releaseWorkspaceEntry()
+  S->>S: closeTab (terminals disposed), invalidate task cache
+  S->>R: releaseWorkspacePreparation (awaited)
+  H->>G: removeWorktree(force = has changes)
+  G-->>H: ok / failed
+  H->>U: success toast / failure toast + Retry
+```
+
 - Strings: `workspaceSidebar.deleteWorktree` and `git.worktree.delete.*`, in both `en-US` and `zh-CN`.
 
 ## Setup command after creation
 
 - Configuration: `worktree.setup` (a string) in the source workspace's root `.zcode/config.json`. Same
-  rules as a project action's `command`: 1–4000 characters after trimming, no control characters (C0
-  and DEL, including newlines). Parsed by `parseWorktreeSetupConfig` in `@zcode/shared`; independent
+  rules as a project action's `command`: 1–4000 characters after trimming, no control or invisible
+  format characters (the same `Cc`/`Cf`/`Zl`/`Zp` rule, including newlines and bidi controls). Parsed by `parseWorktreeSetupConfig` in `@zcode/shared`; independent
   of `actions`, so one being invalid doesn't affect the other.
 
   ```json
@@ -135,7 +165,8 @@ sequenceDiagram
 - `packages/services/test/gitWorktree.test.ts` (real temporary repository): deletion only works for
   ZCode-created worktrees, uncommitted changes need `force`, and after deletion the folder is gone while
   the branch is kept; creation succeeds and
-  checks out the new branch; subdirectory workspace mapping; a suffix when the directory exists; an
+  checks out the new branch; subdirectory workspace mapping; a suffix when the directory exists; a prefix for Windows reserved names; `hasUncommittedChanges`
+  reflecting uncommitted changes; an
   existing branch and an invalid branch name return issues without creating a directory; uncommitted
   changes are not carried over.
 - `packages/ui/test/projectActions.test.ts`: `worktree.setup` parsing (missing, valid, not a string,
