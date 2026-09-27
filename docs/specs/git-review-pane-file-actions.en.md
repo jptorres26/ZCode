@@ -61,7 +61,11 @@ workspace is not a repository. No actions render for datasets with `readonly ===
 - Path classification: first runs `git status --porcelain=v2 -z --untracked-files=normal -- <paths>`
   (a fully untracked large directory is reported as a single `dir/`, so the output stays under the
   limit). A path-scoped status cannot detect renames, so when rename origins are needed the
-  unscoped `git diff --cached --name-status -z -M --diff-filter=R` is read as well. Paths absent
+  unscoped `git diff --cached --name-status -z --diff-filter=R` is read as well, with the same rename
+  detection as the `git status` the pane shows: `status.renames` and `status.renameLimit` are passed as
+  `-c diff.renames=…` and `-c diff.renameLimit=…`, falling back to `diff.renames` (otherwise, with
+  rename detection turned off, an addition and a deletion shown as two rows would be paired again, and
+  selecting one would take the other along). Paths absent
   from the status (already clean, ignored, or deleted) have nothing to act on and are skipped, so
   repeated requests stay idempotent.
 - Input paths resolve only the parent folder's real path (so symlinks in the workspace path still
