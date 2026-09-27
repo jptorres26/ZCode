@@ -163,6 +163,26 @@ withRepo(
   },
 );
 
+withRepo(
+  "a staged deletion with a file re-created at the same path is not discarded over it",
+  { commit: true },
+  async (dir) => {
+    await git(dir, "rm", "-q", "a.txt");
+    await writeFile(join(dir, "a.txt"), "replacement\n");
+    // staged：恢复 HEAD 版本会覆盖重新创建的文件，拒绝且不改动任何内容
+    await assert.rejects(
+      createGitCliRepo().discard(dir, ["a.txt"], true),
+      /untracked file exists at the same path[^:]*: a\.txt$/,
+    );
+    assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "replacement\n");
+    assert.deepEqual(await porcelain(dir), ["D  a.txt", "?? a.txt"]);
+    // unstaged：丢弃重新创建的未跟踪文件，保留已暂存的删除
+    await createGitCliRepo().discard(dir, ["a.txt"], false);
+    assert.equal(await exists(join(dir, "a.txt")), false);
+    assert.deepEqual(await porcelain(dir), ["D  a.txt"]);
+  },
+);
+
 withRepo("discard of a staged rename restores the original path", { commit: true }, async (dir) => {
   await git(dir, "mv", "b.txt", "b2.txt");
   await createGitCliRepo().discard(dir, ["b2.txt"], true);
