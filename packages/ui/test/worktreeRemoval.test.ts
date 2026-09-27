@@ -7,6 +7,11 @@ import { removeManagedWorktree, type WorktreeRemovalParams } from "../src/lib/wo
 interface Harness {
   params: WorktreeRemovalParams;
   calls: string[];
+  removeRequests: Array<{
+    force?: boolean;
+    discardIgnored?: boolean;
+    expectedInstanceId?: string;
+  }>;
   toasts: Array<{ message: string; options?: ToastOptions }>;
   set: (overrides: Partial<State>) => void;
 }
@@ -29,11 +34,13 @@ function createHarness(initial: Partial<State> = {}): Harness {
     ...initial,
   };
   const calls: string[] = [];
+  const removeRequests: Harness["removeRequests"] = [];
   const toasts: Harness["toasts"] = [];
   const params: WorktreeRemovalParams = {
     gitService: {
-      removeWorktree: async ({ force }) => {
+      removeWorktree: async ({ force, discardIgnored, expectedInstanceId }) => {
         calls.push(`remove(force=${String(force)})`);
+        removeRequests.push({ force, discardIgnored, expectedInstanceId });
         return state.removeResults.shift() ?? { ok: true };
       },
       removeWorktreeLeftover: async ({ leftoverId }) => {
@@ -69,8 +76,16 @@ function createHarness(initial: Partial<State> = {}): Harness {
     worktreePath: "/wt/feat",
     branchName: "feat",
     force: false,
+    discardIgnored: false,
+    expectedInstanceId: "1:2:3",
   };
-  return { params, calls, toasts, set: (overrides) => Object.assign(state, overrides) };
+  return {
+    params,
+    calls,
+    removeRequests,
+    toasts,
+    set: (overrides) => Object.assign(state, overrides),
+  };
 }
 
 /** 点击最后一条 toast 的操作按钮，等待重试完成。 */
@@ -182,6 +197,12 @@ test("failed, leftover and dirty retries end terminals and release again before 
     "remove(force=true)",
     "unblock",
   ]);
+  // “仍然删除”同意两类内容，并仍带上确认时的 worktree 身份
+  assert.deepEqual(dirty.removeRequests.at(-1), {
+    force: true,
+    discardIgnored: true,
+    expectedInstanceId: "1:2:3",
+  });
 });
 
 test("a project opened while the release was running stops the removal", async () => {
@@ -204,5 +225,16 @@ test("a leftover folder that changed since the failure is not removed and offers
   await clickLastToastAction(harness);
   const last = harness.toasts.at(-1);
   assert.equal(last?.message, "git.worktree.delete.leftoverChanged");
+  assert.equal(last?.options?.onAction, undefined);
+});
+
+test("a worktree replaced after the confirmation is not removed and offers no retry", async () => {
+  const harness = createHarness({ removeResults: [{ ok: false, reason: "changed" }] });
+  await removeManagedWorktree(harness.params);
+  assert.deepEqual(harness.removeRequests, [
+    { force: false, discardIgnored: false, expectedInstanceId: "1:2:3" },
+  ]);
+  const last = harness.toasts.at(-1);
+  assert.equal(last?.message, "git.worktree.delete.changed");
   assert.equal(last?.options?.onAction, undefined);
 });

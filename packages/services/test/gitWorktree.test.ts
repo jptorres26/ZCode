@@ -185,7 +185,7 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
     const gitRepo = createGitCliRepo({ worktreesRootDir });
     // 主检出不可删除
     assert.equal(await gitRepo.getManagedWorktree(repo), null);
-    assert.deepEqual(await gitRepo.removeWorktree(repo, true), {
+    assert.deepEqual(await gitRepo.removeWorktree(repo, { force: true }), {
       ok: false,
       reason: "not-managed",
     });
@@ -197,7 +197,7 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
     const imported = join(getWorktreeContainerDir(worktreesRootDir, repo), "imported");
     await git(repo, "worktree", "add", "-q", "-b", "imported", imported);
     assert.equal(await gitRepo.getManagedWorktree(imported), null);
-    assert.deepEqual(await gitRepo.removeWorktree(imported, true), {
+    assert.deepEqual(await gitRepo.removeWorktree(imported, { force: true }), {
       ok: false,
       reason: "not-managed",
     });
@@ -206,12 +206,14 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
     assert.equal(created.ok, true);
     if (!created.ok) return;
     const managed = await gitRepo.getManagedWorktree(created.workspacePath);
+    assert.match(managed?.instanceId ?? "", /^\d+:\d+:\d+$/);
     assert.deepEqual(managed, {
       worktreePath: created.worktreePath,
       mainWorktreePath: repo,
       branchName: "feature/x",
       hasUncommittedChanges: false,
       hasIgnoredFiles: false,
+      instanceId: managed?.instanceId,
     });
     // 只有被忽略的文件（info/exclude 由主仓库与各 worktree 共用）：不算未提交改动，但单独报告
     await writeFile(join(repo, ".git", "info", "exclude"), ".env.local\n");
@@ -219,16 +221,38 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
     const withIgnored = await gitRepo.getManagedWorktree(created.workspacePath);
     assert.equal(withIgnored?.hasUncommittedChanges, false);
     assert.equal(withIgnored?.hasIgnoredFiles, true);
-    // 未带 force（用户未同意丢失）时不删除被忽略的文件
-    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, false), {
-      ok: false,
-      reason: "dirty",
-    });
+    // 用户未同意删除被忽略的文件时不删除；只同意丢弃未提交改动也不够
+    for (const options of [{ force: false }, { force: true }]) {
+      assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, options), {
+        ok: false,
+        reason: "dirty",
+      });
+    }
     assert.equal(
       await readFile(join(created.worktreePath, ".env.local"), "utf-8"),
       "TOKEN=local\n",
     );
-    const removed = await gitRepo.removeWorktree(created.workspacePath, true);
+    // 只同意删除被忽略的文件，但确认后又出现了未提交改动：不删除
+    await writeFile(join(created.worktreePath, "later.txt"), "new\n");
+    assert.deepEqual(
+      await gitRepo.removeWorktree(created.workspacePath, { force: false, discardIgnored: true }),
+      { ok: false, reason: "dirty" },
+    );
+    await rm(join(created.worktreePath, "later.txt"));
+    // 不是确认时的那个 worktree：不删除
+    assert.deepEqual(
+      await gitRepo.removeWorktree(created.workspacePath, {
+        force: false,
+        discardIgnored: true,
+        expectedInstanceId: "0:0:0",
+      }),
+      { ok: false, reason: "changed" },
+    );
+    const removed = await gitRepo.removeWorktree(created.workspacePath, {
+      force: false,
+      discardIgnored: true,
+      expectedInstanceId: withIgnored?.instanceId,
+    });
     assert.equal(removed.ok, true);
   });
 });
@@ -245,13 +269,13 @@ test("removing a managed worktree needs force when dirty and keeps the branch", 
       true,
     );
 
-    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, false), {
+    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, { force: false }), {
       ok: false,
       reason: "dirty",
     });
     assert.ok(await exists(created.worktreePath));
 
-    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, true), {
+    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, { force: true }), {
       ok: true,
       mainWorktreePath: repo,
       branchName: "cleanup-me",

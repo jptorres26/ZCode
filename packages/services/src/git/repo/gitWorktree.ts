@@ -257,6 +257,7 @@ export async function readManagedWorktree(context: {
     maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
   });
   const lines = status.stdout.split("\n").filter((line) => line.length > 0);
+  const instanceId = (await readDirectoryIdentity(current.path).catch(() => null)) ?? "";
   return {
     worktreePath: current.path,
     mainWorktreePath: main.path,
@@ -264,21 +265,39 @@ export async function readManagedWorktree(context: {
     // 读取失败时按有改动处理：删除前必须经过“丢弃改动”的确认。
     hasUncommittedChanges: status.exitCode !== 0 || lines.some((line) => !line.startsWith("!! ")),
     hasIgnoredFiles: status.exitCode === 0 && lines.some((line) => line.startsWith("!! ")),
+    instanceId,
   };
 }
 
 export async function removeManagedWorktree(context: {
   commandProvider: GitCommandProvider;
   worktree: GitManagedWorktree | null;
+  /** 用户已同意丢弃未提交改动。 */
   force: boolean;
+  /** 用户已同意删除被 Git 忽略的文件。 */
+  discardIgnored?: boolean;
+  /** 用户确认时的 worktree 身份。 */
+  expectedInstanceId?: string;
 }): Promise<GitRemoveWorktreeResult> {
   const { worktree } = context;
   if (!worktree) {
     return { ok: false, reason: "not-managed" };
   }
-  // 修复原因：未带 force 的 git worktree remove 仍会删除被忽略的文件；确认之后才生成的 .env、数据库或构建产物
-  // 会被静默删除。修复依据：未带 force（用户未同意丢失）时，被忽略的文件与未提交改动一样返回 dirty。
-  if (!context.force && (worktree.hasUncommittedChanges || worktree.hasIgnoredFiles)) {
+  // 修复原因：确认期间该 worktree 可能被外部删除、并在同一路径上建了另一个 ZCode worktree，按路径删除会删掉
+  // 用户没有确认过的检出。修复依据：带上确认时的目录身份，不一致时不删除。
+  if (
+    context.expectedInstanceId !== undefined &&
+    worktree.instanceId !== context.expectedInstanceId
+  ) {
+    return { ok: false, reason: "changed" };
+  }
+  // 修复原因：未带 force 的 git worktree remove 仍会删除被忽略的文件；用户只同意丢失其中一类内容时，
+  // 确认之后才出现的另一类内容也会被删除。修复依据：按用户同意丢失的内容分别判断，出现未同意的内容时返回 dirty；
+  // 只有同意丢弃未提交改动时才带 --force（只有被忽略的文件时不需要）。
+  if (
+    (worktree.hasUncommittedChanges && !context.force) ||
+    (worktree.hasIgnoredFiles && !context.discardIgnored)
+  ) {
     return { ok: false, reason: "dirty" };
   }
   // 在主检出中执行，避免在待删除目录内运行；路径为 git 自身给出的绝对路径，不会被当成选项。

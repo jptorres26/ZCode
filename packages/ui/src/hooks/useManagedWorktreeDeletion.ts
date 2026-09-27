@@ -103,6 +103,7 @@ export function useManagedWorktreeDeletion(options: {
     }
     let hasChanges: boolean;
     let hasIgnoredFiles: boolean;
+    let instanceId: string;
     try {
       // 所有确认都在释放 runtime 之前完成：按删除前一刻的状态决定是否需要“丢弃改动”确认。
       const current = await gitService.getManagedWorktree({ workspacePath });
@@ -110,8 +111,21 @@ export function useManagedWorktreeDeletion(options: {
         toast(intl.formatMessage({ id: "git.worktree.delete.failed" }, { error: "not-managed" }));
         return;
       }
+      // 修复原因：确认期间该 worktree 可能被外部删除、并在同一路径上建了另一个 ZCode worktree，按路径继续会删掉
+      // 用户没有确认过的检出。修复依据：与菜单打开时读取的是同一个 worktree（目录身份一致）才继续，删除时再核对一次。
+      if (current.instanceId !== managedWorktree.instanceId) {
+        toast(
+          intl.formatMessage(
+            { id: "git.worktree.delete.changed" },
+            { path: managedWorktree.worktreePath },
+          ),
+          { variant: "warning" },
+        );
+        return;
+      }
       hasChanges = current.hasUncommittedChanges;
       hasIgnoredFiles = current.hasIgnoredFiles;
+      instanceId = current.instanceId;
     } catch (error: unknown) {
       logger.warn("[WorktreeDeletion] 读取 worktree 状态失败", {
         errorKind: getErrorKindForLog(error),
@@ -122,11 +136,10 @@ export function useManagedWorktreeDeletion(options: {
       return;
     }
     // 修复原因：只有被 Git 忽略的文件时也会随 worktree 一起永久删除，以前不需要额外确认。
-    // 修复依据：有未提交改动或被忽略的文件时都先确认，文案说明会丢失哪些内容；确认即表示同意丢失，以 force 删除
-    // （删除服务在未带 force 时，对确认之后才出现的改动或被忽略的文件返回 dirty）。
-    const force = hasChanges || hasIgnoredFiles;
+    // 修复依据：有未提交改动或被忽略的文件时都先确认，文案说明会丢失哪些内容。确认只针对当时存在的内容：
+    // 分别传给删除服务（force 为未提交改动，discardIgnored 为被忽略的文件），之后才出现的另一类内容返回 dirty。
     if (
-      force &&
+      (hasChanges || hasIgnoredFiles) &&
       !(await confirmDialog({
         title: intl.formatMessage({
           id: hasChanges ? "git.worktree.delete.dirtyTitle" : "git.worktree.delete.ignoredTitle",
@@ -160,7 +173,9 @@ export function useManagedWorktreeDeletion(options: {
       workspacePath,
       worktreePath,
       branchName,
-      force,
+      force: hasChanges,
+      discardIgnored: hasIgnoredFiles,
+      expectedInstanceId: instanceId,
     });
   }, [
     confirmDialog,

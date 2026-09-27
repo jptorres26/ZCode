@@ -1760,9 +1760,12 @@ export function createGitCliRepo(options?: {
       });
     },
 
-    async removeWorktree(workspacePath: string, force: boolean) {
+    async removeWorktree(
+      workspacePath: string,
+      options: { force: boolean; discardIgnored?: boolean; expectedInstanceId?: string },
+    ) {
       const worktree = await this.getManagedWorktree(workspacePath);
-      const result = await removeManagedWorktree({ commandProvider, worktree, force });
+      const result = await removeManagedWorktree({ commandProvider, worktree, ...options });
       if (result.ok) {
         invalidate(workspacePath);
       }

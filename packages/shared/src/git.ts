@@ -222,16 +222,23 @@ export interface GitManagedWorktree {
   hasUncommittedChanges: boolean;
   /** 读取时的状态：有被 Git 忽略的文件（如本地配置、安装的依赖），删除 worktree 会一并永久删除。 */
   hasIgnoredFiles: boolean;
+  /** 该 worktree 目录的身份（设备号、inode 与创建时间）：确认之后据此确认仍是同一个 worktree。 */
+  instanceId: string;
 }
 
 export interface GitRemoveWorktreeRequest extends GitRepositoryRequest {
-  /** 有未提交改动时仍然删除。 */
+  /** 用户已同意丢弃未提交改动：有未提交改动时仍然删除。 */
   force?: boolean;
+  /** 用户已同意删除被 Git 忽略的文件：有这类文件时仍然删除。 */
+  discardIgnored?: boolean;
+  /** 用户确认时的 instanceId；与删除时的 worktree 不同则不删除（reason 为 changed）。 */
+  expectedInstanceId?: string;
 }
 
 export type GitRemoveWorktreeResult =
   | { ok: true; mainWorktreePath: string; branchName: string | null }
-  | { ok: false; reason: "not-managed" | "dirty" | "failed"; detail?: string }
+  /** changed：该路径上已不是用户确认的那个 worktree。 */
+  | { ok: false; reason: "not-managed" | "dirty" | "changed" | "failed"; detail?: string }
   /**
    * git 已撤销登记但目录未能删净（常见于 Windows 目录占用）；用 removeWorktreeLeftover 清理剩余目录。
    * leftoverId 为失败时该目录的文件系统身份（设备号、inode 与创建时间），清理时据此确认仍是同一目录。
