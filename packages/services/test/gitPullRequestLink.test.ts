@@ -85,6 +85,23 @@ test("a branch pushed to a fork links to the fork with the pushed branch", async
   });
 });
 
+test("a remote with a separate push URL links to the repository pushed to", async () => {
+  await withRepo(async (dir) => {
+    const head = (await git(dir, "rev-parse", "HEAD")).trim();
+    await git(dir, "update-ref", "refs/remotes/origin/main", head);
+    await git(dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+    await git(dir, "remote", "set-url", "--push", "origin", "git@github.com:me/demo.git");
+    await git(dir, "checkout", "-q", "-b", "feature/login");
+    await git(dir, "config", "branch.feature/login.remote", "origin");
+    await git(dir, "config", "branch.feature/login.merge", "refs/heads/feature/login");
+
+    assert.equal(
+      (await createGitCliRepo().getPullRequestLink(dir))?.url,
+      "https://github.com/me/demo/compare/main...feature/login?expand=1",
+    );
+  });
+});
+
 test("a detached HEAD has no link", async () => {
   await withRepo(async (dir) => {
     await git(dir, "checkout", "-q", "--detach");
