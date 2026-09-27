@@ -5,10 +5,7 @@ import { parseWorktreeList, realpathOrSelf } from "./gitWorktreeList.js";
 // 新建 worktree 失败后的回滚。规范：docs/specs/git-worktree-task.md
 
 /** 引用查询结果：找到、确认不存在，或无法判断（超时、输出超限、其它错误）。 */
-type CommitLookup =
-  | { kind: "found"; oid: string }
-  | { kind: "missing" }
-  | { kind: "unknown" };
+type CommitLookup = { kind: "found"; oid: string } | { kind: "missing" } | { kind: "unknown" };
 
 export async function readCommit(
   context: { commandProvider: GitCommandProvider; repoRoot: string },
