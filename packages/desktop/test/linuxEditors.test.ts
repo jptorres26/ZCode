@@ -75,6 +75,20 @@ test("detection keeps candidate order, one entry per target, and resolves termin
   );
 });
 
+test("a hit from a relative PATH entry is cached as an absolute path", async () => {
+  const { resolve } = await import("node:path");
+  // 检测时相对应用当前目录找到；启动时 cwd 是 workspace，相对路径会指向 workspace 下的同名程序
+  const absolute = resolve("bin", "x-terminal-emulator");
+  const defs = await detectLinuxEditors({
+    searchDirs: ["bin"],
+    fs: createFakeFs({ executables: [absolute] }),
+  });
+  assert.deepEqual(
+    defs.map((def) => [def.id, def.commandPath]),
+    [["terminal", absolute]],
+  );
+});
+
 test("files that are not executable are ignored", async () => {
   const defs = await detectLinuxEditors({
     searchDirs: ["/usr/bin"],

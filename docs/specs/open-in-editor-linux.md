@@ -19,7 +19,8 @@ Main 进程 `getInstalledEditors()` / `openInEditor()`。此前 `getEditorDefsFo
 ## Linux 检测规则
 
 - 查找目录：`PATH` 各项，外加 `~/.local/share/JetBrains/Toolbox/scripts` 与 `/snap/bin`；
-  只接受存在且可执行的普通文件。每个目标按候选命令顺序取第一个命中。
+  只接受存在且可执行的普通文件。每个目标按候选命令顺序取第一个命中。命中的路径在检测时按当前工作目录解析为绝对路径
+  再缓存：`PATH` 中的相对项（如 `bin`）若原样保存，启动时以 workspace 为 cwd 会解析到 workspace 下的同名程序。
 - 目标（id → 候选命令）：
   - 编辑器：`vscode` → `code`；`vscode-insiders` → `code-insiders`；`vscodium` → `codium`；
     `cursor` → `cursor`；`zed` → `zed`、`zeditor`；`sublime` → `subl`；JetBrains `idea`、`webstorm`、
