@@ -1691,11 +1691,13 @@ export function createGitCliRepo(options?: {
       const remoteName = hasTrackingBranch
         ? parseTrackingRemoteName(status.summary.trackingBranchName)
         : await resolvePushRemote(status);
+      const explicitRemote = hasTrackingBranch ? null : (remoteName ?? "origin");
       const pushResult = await commandProvider.run({
         cwd: resolution.repoRoot,
-        args: hasTrackingBranch
-          ? ["push"]
-          : ["push", "--set-upstream", remoteName ?? "origin", branchName],
+        // --porcelain：每条推送的引用输出到 stdout，供创建 PR 链接取实际推送的分支与地址。
+        args: explicitRemote
+          ? ["push", "--porcelain", "--set-upstream", explicitRemote, branchName]
+          : ["push", "--porcelain"],
         // 关键业务逻辑：push 是显式用户动作，而且可能被 pre-push hook 拉长。
         // 这里单独使用更长超时，避免测试/校验脚本尚未跑完就被前端误判成 push 失败。
         timeoutMs: DEFAULT_GIT_PUSH_TIMEOUT_MS,
@@ -1706,27 +1708,25 @@ export function createGitCliRepo(options?: {
       ensureGitCommandSucceeded("git push", pushResult);
       invalidate(workspacePath);
 
-      const nextStatus = await this.getStatus(workspacePath);
+      const [nextStatus, pullRequestLink] = await Promise.all([
+        this.getStatus(workspacePath),
+        // 链接只是附加操作：计算失败不影响推送结果。
+        readGitPullRequestLink({
+          commandProvider,
+          repoRoot: resolution.repoRoot,
+          branchName,
+          pushOutput: pushResult.stdout,
+          explicitRemote,
+        }).catch(() => null),
+      ]);
       return {
         branchName,
         trackingBranchName: nextStatus.summary.trackingBranchName,
         remoteName: remoteName ?? parseTrackingRemoteName(nextStatus.summary.trackingBranchName),
         setUpstream: !hasTrackingBranch,
         summary: nextStatus.summary,
+        pullRequestLink,
       };
-    },
-
-    async getPullRequestLink(workspacePath: string) {
-      const status = await this.getStatus(workspacePath);
-      const resolution = status.resolution;
-      const branchName = status.summary.branchName?.trim();
-      if (!resolution.isGitAvailable || !resolution.isRepository) return null;
-      if (status.summary.headRefType !== "branch" || !branchName) return null;
-      return await readGitPullRequestLink({
-        commandProvider,
-        repoRoot: resolution.repoRoot,
-        branchName,
-      });
     },
 
     async createWorktree(workspacePath: string, branchName: string) {

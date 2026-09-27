@@ -324,10 +324,6 @@ export function createGitService(options?: {
       return result;
     },
 
-    async getPullRequestLink(params) {
-      return await repo.getPullRequestLink(params.workspacePath);
-    },
-
     async createWorktree(params) {
       return await repo.createWorktree(params.workspacePath, params.branchName);
     },

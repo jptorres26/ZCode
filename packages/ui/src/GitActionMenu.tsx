@@ -833,7 +833,7 @@ export function GitActionMenu({
 }: GitActionMenuProps) {
   const { gitService } = useServices();
   const { intl, locale } = useZCodeIntl();
-  const resolvePullRequestToastOptions = useGitPullRequestToastOptions(workspacePath);
+  const resolvePullRequestToastOptions = useGitPullRequestToastOptions();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [commitDialogLoading, setCommitDialogLoading] = useState(false);
   const [commitDialogState, setCommitDialogState] = useState<GitCommitDialogState | null>(null);
@@ -1099,7 +1099,7 @@ export function GitActionMenu({
                 currentBranchLabel,
             },
           ),
-          await resolvePullRequestToastOptions(),
+          resolvePullRequestToastOptions(result.pullRequestLink),
         );
       }
       return result;
@@ -1186,9 +1186,9 @@ export function GitActionMenu({
         });
         committed = true;
 
-        if (options?.pushAfterCommit) {
-          await pushCurrentBranch({ showToast: false });
-        }
+        const pushResult = options?.pushAfterCommit
+          ? await pushCurrentBranch({ showToast: false })
+          : null;
 
         logger.info("[GitActionMenu] 提交当前更改成功", {
           workspacePath,
@@ -1201,7 +1201,7 @@ export function GitActionMenu({
               ? "git.actionMenu.commitDialog.toast.commitAndPushSuccess"
               : "git.actionMenu.commitDialog.toast.success",
           }),
-          options?.pushAfterCommit ? await resolvePullRequestToastOptions() : undefined,
+          pushResult ? resolvePullRequestToastOptions(pushResult.pullRequestLink) : undefined,
         );
         closeCommitDialog();
         onRefreshGit();
