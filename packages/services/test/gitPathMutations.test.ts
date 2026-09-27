@@ -243,6 +243,25 @@ withRepo(
   },
 );
 
+withRepo(
+  "with status.renames=false an added file is not paired with an unselected deletion",
+  { commit: true },
+  async (dir) => {
+    // 界面按 git status 显示：关闭重命名检测时 b2.txt 是新增、b.txt 是另一行删除
+    await git(dir, "config", "status.renames", "false");
+    await git(dir, "mv", "b.txt", "b2.txt");
+    await createGitCliRepo().unstage(dir, ["b2.txt"]);
+    assert.deepEqual((await porcelain(dir)).sort(), ["?? b2.txt", "D  b.txt"]);
+
+    await git(dir, "add", "b2.txt");
+    await createGitCliRepo().commit(dir, "add b2", ["b2.txt"], { stagedOnly: true });
+    const tree = (await git(dir, "ls-tree", "--name-only", "HEAD")).split("\n").filter(Boolean);
+    assert.ok(tree.includes("b2.txt"));
+    assert.ok(tree.includes("b.txt"), "the unselected deletion must not be committed");
+    assert.deepEqual(await porcelain(dir), ["D  b.txt"]);
+  },
+);
+
 withRepo("discard of a staged rename restores the original path", { commit: true }, async (dir) => {
   await git(dir, "mv", "b.txt", "b2.txt");
   await createGitCliRepo().discard(dir, ["b2.txt"], true, []);

@@ -54,7 +54,9 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
 - `stage(paths)`：`git add -- <paths>`（不变）。
 - 路径分类：先执行 `git status --porcelain=v2 -z --untracked-files=normal -- <paths>`
   （完全未跟踪的大目录只返回一条 `dir/`，避免输出超限）。按路径裁剪的 status 无法识别重命名，
-  需要重命名原路径时另读不裁剪的 `git diff --cached --name-status -z -M --diff-filter=R`。
+  需要重命名原路径时另读不裁剪的 `git diff --cached --name-status -z --diff-filter=R`，重命名检测与界面所用的
+  `git status` 一致：`status.renames`、`status.renameLimit` 以 `-c diff.renames=…`、`-c diff.renameLimit=…` 传入，
+  未配置时沿用 `diff.renames`（否则关闭重命名检测时界面分两行显示的新增与删除会被重新配对，只选其中一行也会带上另一行）。
   状态里不存在的路径（已干净、被忽略或已删除）没有可操作的变更，直接跳过，保证重复请求幂等。
 - 输入路径只解析父目录的真实路径（兼容工作区路径中的符号链接），最后一段保持字面：变更本身是符号链接时，
   暂存与丢弃作用于链接本身，绝不作用于链接目标（否则丢弃一个指向目录的未跟踪链接会清空目标目录）。

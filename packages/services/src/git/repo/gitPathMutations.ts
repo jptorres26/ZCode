@@ -205,15 +205,34 @@ export function parseStagedRenameEntries(stdout: string): GitStatusEntry[] {
   return entries;
 }
 
+async function readGitConfig(context: GitPathMutationContext, key: string): Promise<string | null> {
+  const result = await context.commandProvider.run({
+    cwd: context.repoRoot,
+    args: ["config", "--get", key],
+    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+  });
+  const value = result.stdout.trim();
+  return result.exitCode === 0 && value.length > 0 ? value : null;
+}
+
 async function readStagedRenameEntries(context: GitPathMutationContext): Promise<GitStatusEntry[]> {
   // 按路径裁剪的 status 看不到路径集合之外的另一端，重命名会退化成单独的 A / D。
   // 重命名对只能从不裁剪的 index 对比中读取；--diff-filter=R 只输出重命名，体积很小。
+  // 修复原因：之前固定带 -M；仓库配置 status.renames=false 时 Review 面板把新增与删除显示为两行，这里却重新配成
+  // 重命名，只选中新增的一行取消暂存、丢弃或提交时会连带未选中的删除。
+  // 修复依据：与界面所用的 git status 采用同一重命名规则：status.renames（及 status.renameLimit）优先，
+  // 否则沿用 diff.renames（git diff 与 git status 的默认值相同）。
+  const [statusRenames, statusRenameLimit] = await Promise.all([
+    readGitConfig(context, "status.renames"),
+    readGitConfig(context, "status.renameLimit"),
+  ]);
   const renames = await runGit(context, "git diff --cached renames", [
+    ...(statusRenames ? ["-c", `diff.renames=${statusRenames}`] : []),
+    ...(statusRenameLimit ? ["-c", `diff.renameLimit=${statusRenameLimit}`] : []),
     "diff",
     "--cached",
     "--name-status",
     "-z",
-    "-M",
     "--diff-filter=R",
   ]);
   return parseStagedRenameEntries(renames.stdout);
