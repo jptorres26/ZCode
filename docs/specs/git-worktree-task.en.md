@@ -97,13 +97,18 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   attempt ends, whether it succeeded or not. The block records the folder's device, inode and birth
   time: if a reload or crash leaves it unreleased, it lapses as soon as the folder is gone or is a
   different folder re-created at the same path, so later worktrees can still open terminals (no
-  timer involved).
+  timer involved). Known limitation: if the unblock request itself is lost (for example the connection
+  drops) while the folder is kept, the block stays until a later delete removes the folder or the Host
+  exits. The error a refused `create()` returns doesn't contain the path, since the terminal UI logs
+  it at error level.
 - Precondition: if the same worktree is also open as another local project (for example its root
   and a subfolder), deletion is refused with a hint to close those first (checked before the
   confirmations, again before releasing, and before every retry from a toast; when the path strings
-  differ, the local Host resolves both real paths (`IFileService.resolvePath`) and compares those,
-  which covers entries opened through a symlink or junction, including aliases of a subfolder of the
-  worktree). Otherwise the other entry's
+  differ, the local Host resolves both real paths (`IFileService.resolvePath`, the worktree's only once)
+  and compares those, which covers entries opened through a symlink or junction, including aliases of
+  a subfolder of the worktree; if that still doesn't match, for example for an alias realpath doesn't
+  see through such as a bind mount, or when resolving fails, the entry's own managed worktree
+  (`getManagedWorktree`) is compared). Otherwise the other entry's
   Agent keeps running inside the worktree and removal fails or deletes a checkout that an unconfirmed
   workspace is using.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
@@ -114,33 +119,43 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   3. It calls `getManagedWorktree` again for the current state. With uncommitted changes, a second
      confirmation says they will be lost for good, and confirming deletes with `force`. **Every
      confirmation happens before anything is released**, so cancelling at any step has no effect.
+     The steps after the confirmations run in `removeManagedWorktree`
+     (`packages/ui/src/lib/worktreeRemoval.ts`), which doesn't depend on React because the sidebar row
+     unmounts once the entry is closed. **Every attempt runs steps 4–6 in full**, including each retry
+     offered in a toast: check for other entries, end the terminals, release the runtime, remove, and
+     unblock. Each of these calls can be repeated (closing an entry that is already closed does nothing,
+     and releasing when no runtime runs does nothing). So if the user reopened the worktree in the
+     meantime, opened a terminal and then used "Remove" (which doesn't wait for terminals or the runtime to
+     exit), a retry still ends them before removing.
   4. It calls `disposeUnderPath(worktreePath)` and **waits for the terminals to exit**, then does the
      same cleanup as "Remove" (close the tab, release the runtime, invalidate the task cache) and
      **waits for the runtime release to finish**. The delete flow skips the Windows reserved-name scan:
      the folder is about to go, and scanning it would hold it open during deletion. If the request to
      end the terminals fails, or the runtime release fails (`releaseWorkspacePreparation` rejects, for
      example because IPC or the Host went away), **nothing is deleted**: a toast says the tasks and
-     terminals couldn't be stopped and that the folder and the branch are kept, and "Retry" runs this
-     step again (both calls can be repeated; closing an entry that is already closed does nothing).
-     When ending the terminals fails, the entry has not been closed yet. Plain "Remove" ignores the
-     release result.
-  5. Only then does it call `removeWorktree`. Release comes first because on Windows an Agent or
-     terminal process whose cwd is inside the folder locks it, so removing first fails or deletes only
-     some of the files.
-  6. Outcomes (the sidebar row has unmounted by now, so follow-up confirmations and retries are toast
-     actions the user clicks; there is no timed retry):
+     terminals couldn't be stopped and that the folder and the branch are kept, and offers "Retry".
+     When ending the terminals fails, the entry isn't closed (on the first attempt the sidebar row is
+     still there). Plain "Remove" ignores the release result.
+  5. Only then does it call `removeWorktree` (or `removeWorktreeLeftover` when retrying a leftover).
+     Release comes first because on Windows an Agent or terminal process whose cwd is inside the folder
+     locks it, so removing first fails or deletes only some of the files.
+  6. Outcomes (except when ending the terminals failed, the sidebar row has unmounted by now, so
+     follow-up confirmations and retries are toast actions the user clicks; there is no timed retry):
      - Success: says the branch was kept.
      - `dirty` (changes appeared after the confirmation, which the user didn't agree to discard): says
-       nothing was deleted and offers "Delete anyway", which retries with `force`.
-     - `leftover`: says the folder couldn't be fully deleted and the branch is kept; "Retry" calls
-       `removeWorktreeLeftover`.
+       nothing was deleted and offers "Delete anyway", which makes a new attempt with `force`.
+     - `leftover`: says the folder couldn't be fully deleted and the branch is kept; the removal step
+       of "Retry" is `removeWorktreeLeftover`.
      - Any other failure (git deleted nothing, for example a locked worktree): says the folder and the
-       branch are both kept; "Retry" calls `removeWorktree` again.
+       branch are both kept; "Retry" makes a new attempt with `removeWorktree`.
+  - Logs record only the failure kind, not git's error text, which contains paths. The full text is
+    shown only in the toast.
 
 ```mermaid
 sequenceDiagram
   participant U as User
   participant H as useManagedWorktreeDeletion
+  participant W as removeManagedWorktree
   participant T as ITerminalService
   participant S as WorkspaceSidebarItem (Remove cleanup)
   participant R as zcodeTaskService
@@ -149,14 +164,23 @@ sequenceDiagram
   H->>U: running confirmation → destructive confirmation
   H->>G: getManagedWorktree (current state)
   H->>U: if changes: discard confirmation
-  H->>T: disposeUnderPath(worktreePath) (wait for terminals to exit)
-  H->>S: releaseWorkspaceEntry({ scanReservedNames: false })
-  S->>S: closeTab, invalidate task cache
-  S->>R: releaseWorkspacePreparation (awaited)
-  R-->>H: released or not (if not: toast Retry, nothing deleted)
-  H->>G: removeWorktree(force = has changes)
-  G-->>H: ok / dirty / leftover / failed
-  H->>U: success / toast: Delete anyway (force) / Retry (removeWorktreeLeftover or removeWorktree)
+  H->>W: start an attempt
+  loop every attempt (the first, and each retry from a toast)
+    W->>H: other entries still open? (yes: hint and stop)
+    W->>T: disposeUnderPath(worktreePath) (wait for terminals to exit, block new ones)
+    alt ending the terminals failed
+      W->>U: toast: couldn't stop, folder and branch kept (Retry)
+    else
+      W->>S: releaseWorkspaceEntry({ scanReservedNames: false })
+      S->>S: closeTab, invalidate task cache
+      S->>R: releaseWorkspacePreparation (awaited)
+      R-->>W: released or not (if not: toast Retry, nothing deleted)
+      W->>G: removeWorktree(force) or removeWorktreeLeftover
+      G-->>W: ok / dirty / leftover / failed
+      W->>U: success / toast: Delete anyway (force) / Retry
+    end
+    W->>T: releasePathBlock(worktreePath)
+  end
 ```
 
 - Strings: `workspaceSidebar.deleteWorktree` and `git.worktree.delete.*`, in both `en-US` and `zh-CN`.

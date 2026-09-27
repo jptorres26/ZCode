@@ -451,7 +451,8 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   // 删除时按需读取（不订阅）：同一 worktree 的其它本地入口。
   // 修复原因：入口保存的是打开时的路径写法，git 给出的 worktree 路径是真实路径；经符号链接或 junction 打开的入口
   // （包括指向 worktree 内子目录或子模块的别名）字面上不在 worktree 下，只按字面或所在 worktree 比较会漏掉。
-  // 修复依据：字面不匹配时由本地 Host 解析两边的真实路径（fileService.resolvePath）再比较。
+  // 修复依据：字面不匹配时由本地 Host 解析两边的真实路径（fileService.resolvePath）再比较；仍不匹配（真实路径
+  // 识别不了的别名，如 bind mount，或解析失败）时再按该入口所在的 worktree（getManagedWorktree）比较。
   const listOtherEntriesInWorktree = useCallback(
     async (worktreePath: string) => {
       const others = (tabStoreApi?.getState().tabs ?? [])
@@ -463,17 +464,23 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
             !other.remoteTarget &&
             !other.workspaceIdentity,
         );
+      if (others.length === 0) return [];
       const resolvePath = (path: string) => baseServices.fileService.resolvePath({ path });
+      const parents = [worktreePath, await resolvePath(worktreePath).catch(() => worktreePath)];
       const inWorktree = await Promise.all(
-        others.map((other) =>
-          isSameOrInsideRealPath(other.workspacePath, worktreePath, resolvePath),
-        ),
+        others.map(async (other) => {
+          if (await isSameOrInsideRealPath(other.workspacePath, parents, resolvePath)) return true;
+          const managed = await baseServices.gitService
+            .getManagedWorktree({ workspacePath: other.workspacePath })
+            .catch(() => null);
+          return managed?.worktreePath === worktreePath;
+        }),
       );
       return others
         .filter((_, index) => inWorktree[index])
         .map((other) => getPathLeaf(other.workspacePath));
     },
-    [baseServices.fileService, tab.id, tabStoreApi],
+    [baseServices.fileService, baseServices.gitService, tab.id, tabStoreApi],
   );
   // 删除 ZCode 创建的 worktree。规范：docs/specs/git-worktree-task.md
   const { managedWorktree, deleteWorktree } = useManagedWorktreeDeletion({
