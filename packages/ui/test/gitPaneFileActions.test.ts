@@ -146,4 +146,9 @@ test("collapsed untracked folders and deleted files can't be opened in the viewe
     canOpenGitPaneChangeInViewer({ ...change("vendor/lib", "unstaged"), isSubmodule: true }),
     false,
   );
+  // `MD`：kind 按 index 一侧为 modified，但工作区中已没有该文件
+  assert.equal(
+    canOpenGitPaneChangeInViewer({ ...change("gone.ts", "staged"), isMissingInWorkingTree: true }),
+    false,
+  );
 });

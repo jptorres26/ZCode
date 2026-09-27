@@ -89,8 +89,10 @@ workspace is not a repository. No actions render for datasets with `readonly ===
 - The row context menu offers the same actions, driven by the same availability check.
 - The first context menu item is "Open file". It calls the side pane's existing
   `onOpenCodeViewer` with `{ type: "file", title: <file name>, path: <absolute path> }`, opening
-  the working-tree version in the in-app file viewer. It is disabled for deleted files, collapsed
-  untracked folders (`dir/`) and submodules (a folder in the working tree; the service sets
+  the working-tree version in the in-app file viewer. It is disabled for deleted files, files no longer
+  in the working tree (such as `MD`, modified in the index and deleted from the working tree, whose kind
+  follows the index as modified, or a branch-comparison file deleted locally; the service sets
+  `isMissingInWorkingTree`), collapsed untracked folders (`dir/`) and submodules (a folder in the working tree; the service sets
   `isSubmodule` when the working-tree mode `<mW>` of porcelain v2 status is 160000 and, for the branch
   comparison, when the new side in `diff --raw` is; a submodule replaced by a regular file can be
   previewed), none of which has a file to preview, and hidden
