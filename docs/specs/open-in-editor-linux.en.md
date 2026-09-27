@@ -21,7 +21,9 @@ spec fills in Linux and adds Xcode on macOS.
 
 - Search directories: every `PATH` entry, plus `~/.local/share/JetBrains/Toolbox/scripts` and
   `/snap/bin`. Only existing, executable regular files count. Each target takes the first hit in
-  candidate-command order.
+  candidate-command order. The hit is resolved to an absolute path against the current directory at
+  detection time before it is cached: a relative `PATH` entry (such as `bin`) kept as is would resolve,
+  at launch with the workspace as cwd, to a same-named program inside the workspace.
 - Targets (id → candidate commands):
   - Editors: `vscode` → `code`; `vscode-insiders` → `code-insiders`; `vscodium` → `codium`;
     `cursor` → `cursor`; `zed` → `zed`, `zeditor`; `sublime` → `subl`; JetBrains `idea`, `webstorm`,

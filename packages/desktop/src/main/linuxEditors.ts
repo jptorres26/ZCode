@@ -8,7 +8,7 @@
 import { constants } from "node:fs";
 import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, delimiter, extname, isAbsolute, join } from "node:path";
+import { basename, delimiter, extname, isAbsolute, join, resolve } from "node:path";
 import type { EditorInfo } from "@zcode/shared";
 
 export type LinuxEditorKind = "editor" | "terminal" | "file-manager";
@@ -148,7 +148,9 @@ async function findFirstExecutable(
 ): Promise<string | null> {
   for (const command of commands) {
     for (const dir of options.searchDirs) {
-      const candidate = join(dir, command);
+      // 修复原因：PATH 中的相对项（如 `bin`）检测时相对应用当前目录，缓存的却是相对路径；启动终端时以 workspace
+      // 为 cwd，会执行 workspace 下的同名程序或找不到命令。修复依据：检测时就解析为绝对路径再缓存。
+      const candidate = resolve(dir, command);
       if (await options.fs.isExecutableFile(candidate)) return candidate;
     }
   }
