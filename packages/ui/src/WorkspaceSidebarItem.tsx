@@ -56,7 +56,7 @@ import { TaskList } from "@/TaskList.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
 import { useOptionalTabStoreApi } from "@/store/TabStoreProvider.js";
-import { getPathLeaf, isSameOrInsideRealPath } from "@/lib/path.js";
+import { getPathLeaf, isEntryInsideWorktree } from "@/lib/path.js";
 import type { RemoteConnectionLogEntry } from "@/hooks/useRemoteConnectionLogs.js";
 import { ReconnectingRemoteWorkspaceLogTooltip } from "@/WorkspaceSidebar/ReconnectingRemoteWorkspaceLogTooltip.js";
 import { cn } from "@/components/lib/utils.js";
@@ -468,13 +468,14 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
       const resolvePath = (path: string) => baseServices.fileService.resolvePath({ path });
       const parents = [worktreePath, await resolvePath(worktreePath).catch(() => worktreePath)];
       const inWorktree = await Promise.all(
-        others.map(async (other) => {
-          if (await isSameOrInsideRealPath(other.workspacePath, parents, resolvePath)) return true;
-          const managed = await baseServices.gitService
-            .getManagedWorktree({ workspacePath: other.workspacePath })
-            .catch(() => null);
-          return managed?.worktreePath === worktreePath;
-        }),
+        others.map((other) =>
+          isEntryInsideWorktree(other.workspacePath, worktreePath, parents, {
+            resolvePath,
+            readManagedWorktreePath: async (path) =>
+              (await baseServices.gitService.getManagedWorktree({ workspacePath: path }))
+                ?.worktreePath ?? null,
+          }),
+        ),
       );
       return others
         .filter((_, index) => inWorktree[index])
