@@ -7,3 +7,16 @@ export function getErrorMessage(error: unknown): string {
   // 这里统一剥掉重复前缀，只保留真正有意义的错误内容。
   return rawMessage.replace(/^(Error:\s*)+/i, "").trim();
 }
+
+/**
+ * 日志用的错误类别：错误码（如 ENOENT）或错误名称。错误信息常含路径、分支名或远程地址，
+ * 只在界面提示中展示，不写入会在生产环境落盘的日志。
+ */
+export function getErrorKindForLog(error: unknown): string {
+  if (error && typeof error === "object") {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" || typeof code === "number") return String(code);
+    if (error instanceof Error) return error.name;
+  }
+  return typeof error;
+}

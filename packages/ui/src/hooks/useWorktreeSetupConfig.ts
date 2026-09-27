@@ -1,7 +1,7 @@
 import { parseWorktreeSetupConfig, type WorktreeSetupConfig } from "@zcode/shared";
 import { useEffect, useState } from "react";
 import { useServices } from "@/hooks/useServices.js";
-import { getErrorMessage } from "@/lib/errorMessage.js";
+import { getErrorKindForLog } from "@/lib/errorMessage.js";
 import { readWorkspaceConfigFile } from "@/lib/workspaceConfigFile.js";
 import { logger } from "@/logger.js";
 
@@ -40,7 +40,7 @@ export function useWorktreeSetupConfig(
       })
       .catch((error: unknown) => {
         logger.warn("[GitWorktree] 读取 .zcode/config.json 失败", {
-          error: getErrorMessage(error),
+          errorKind: getErrorKindForLog(error),
         });
         if (!disposed) setState({ status: "unreadable" });
       });

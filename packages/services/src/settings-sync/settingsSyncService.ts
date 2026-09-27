@@ -1115,10 +1115,10 @@ async function readTargetConfigForExistingNames(
   try {
     return await readJsonFileOrEmpty(configPath);
   } catch (error) {
-    // 只记录文件名：完整路径含用户名或项目目录。
+    // 只记录文件名与错误类别：完整路径含用户名或项目目录；错误信息含路径，JSON 解析错误还会引用文件内容片段（可能含凭据）。
     log.warn("[settings-sync] target config is unreadable; existing names unknown", {
       configFile: basename(configPath),
-      error: error instanceof Error ? error.message : String(error),
+      errorCode: (error as NodeJS.ErrnoException | undefined)?.code ?? (error as Error)?.name,
     });
     return null;
   }

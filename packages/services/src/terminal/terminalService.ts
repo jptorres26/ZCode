@@ -19,6 +19,7 @@ import {
   type PendingTerminalCreate,
   registerPendingTerminalCreate,
   releaseTerminalPathBlock,
+  TERMINAL_FOLDER_BEING_REMOVED,
   type TerminalPathBlocks,
   waitForExitBounded,
 } from "./terminalDisposal.js";
@@ -431,7 +432,7 @@ export function createTerminalService(dependencies: {
         if (pending.cancelled) {
           p.kill();
           await waitForExitBounded(exited);
-          throw new Error(`Terminal was not started because '${cwd}' is being removed`);
+          throw new Error(TERMINAL_FOLDER_BEING_REMOVED);
         }
         terminals.set(id, { pty: p, dataEmitter, exitEmitter, cwd: realCwd, exited });
         return {
