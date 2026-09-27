@@ -27,10 +27,15 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
    的前 8 位（常见文件系统单段上限为 255 字节，扁平化后的长分支名会超出）；目录已存在时依次追加 `-2`、`-3`…（最多 99）。
    放在仓库外，避免出现在原仓库的文件树与 `git status` 中。
 3. 先执行 `git worktree prune`（只清理目录已被删除的登记项，否则手动删除过的同名目录会让 add 失败），再执行
-   `git worktree add -b <branch> <path> HEAD`：新分支从当前 HEAD 创建。**未提交的改动不会带入新 worktree**。
+   `git worktree add -b <branch> <path> <HEAD 的提交>`：新分支从当前 HEAD 创建（先读出提交号，回滚时按它核对）。
+   **未提交的改动不会带入新 worktree**。
 4. 若原 workspace 是仓库的子目录，返回的 `workspacePath` 为新 worktree 中对应的同一子目录；该子目录在 HEAD 中
    不存在（未跟踪、被忽略或新建）时回退为 worktree 根目录。
-5. 失败时解析 git 输出为 issue；成功后使原 workspace 的缓存失效。
+5. 失败时解析 git 输出为 issue，并回滚这次尝试留下的内容：git 在检出前就建好了分支，检出失败或超时被终止时，
+   分支（有时还有登记为锁定的半成品目录）会留下，同样的输入重试会报“分支已存在”。回滚依次执行 `git worktree prune`；
+   目标目录仍登记时 `git worktree remove --force --force` 删除（目录是这次尝试新建的，此前不存在）；分支在这次尝试前
+   不存在、没有被任何 worktree 检出且仍指向创建时的提交时，`git update-ref -d refs/heads/<branch> <提交>` 删除它。
+   回滚是尽力而为，失败时仍返回原来的 issue。成功后使原 workspace 的缓存失效。
 
 ## 交互
 

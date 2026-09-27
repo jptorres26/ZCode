@@ -100,14 +100,26 @@ export async function addGitWorktree(context: {
     };
   }
 
+  // 修复原因：git 在检出前就建好了新分支；检出失败（如 smudge 过滤器出错）或超时被终止时，分支（有时还有登记为锁定、
+  // 检出一半的目录）会留下，同样的输入重试报“分支已存在”，只能手动修复仓库。
+  // 修复依据：先记下起点提交与分支是否已存在，从该提交创建；失败后回滚这次尝试留下的内容。
+  const [baseCommit, existingBranch] = await Promise.all([
+    readCommit(context, "HEAD"),
+    readCommit(context, `refs/heads/${branchName}`),
+  ]);
   // 分支名已经过 check-ref-format 校验，路径为绝对路径，都不会被当成选项解析。
   const result = await context.commandProvider.run({
     cwd: context.repoRoot,
-    args: ["worktree", "add", "-b", branchName, worktreePath, "HEAD"],
+    args: ["worktree", "add", "-b", branchName, worktreePath, baseCommit ?? "HEAD"],
     timeoutMs: GIT_WORKTREE_ADD_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
   });
   if (result.exitCode !== 0 || result.timedOut) {
+    if (baseCommit && !existingBranch) {
+      await rollBackFailedWorktreeAdd({ ...context, worktreePath, baseCommit }).catch(
+        () => undefined,
+      );
+    }
     return { ok: false, branchName, issues: parseGitBranchMutationIssues(result) };
   }
   await writeManagedWorktreeMarker(context.commandProvider, worktreePath);
@@ -122,6 +134,60 @@ export async function addGitWorktree(context: {
     ? mappedWorkspacePath
     : worktreePath;
   return { ok: true, branchName, worktreePath, workspacePath };
+}
+
+async function readCommit(
+  context: { commandProvider: GitCommandProvider; repoRoot: string },
+  ref: string,
+): Promise<string | null> {
+  const result = await context.commandProvider.run({
+    cwd: context.repoRoot,
+    args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+  });
+  const oid = result.exitCode === 0 ? result.stdout.trim() : "";
+  return oid.length > 0 ? oid : null;
+}
+
+/**
+ * 回滚失败的 `git worktree add`，只清理这次尝试新建的内容：目标目录此前不存在（pickFreeWorktreePath），仍登记时
+ * 连同锁定一并删除；分支此前不存在（调用方判断），没有被任何 worktree 检出时按起点提交删除（update-ref 核对旧值，
+ * 期间被移动过则不删）。尽力而为，任何一步失败都停止，保留剩余内容。
+ */
+async function rollBackFailedWorktreeAdd(context: {
+  commandProvider: GitCommandProvider;
+  repoRoot: string;
+  worktreePath: string;
+  branchName: string;
+  baseCommit: string;
+}): Promise<void> {
+  const run = (args: string[]) =>
+    context.commandProvider.run({
+      cwd: context.repoRoot,
+      args,
+      timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+      maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+    });
+  const listWorktrees = async () => {
+    const result = await run(["worktree", "list", "--porcelain"]);
+    if (result.exitCode !== 0) return null;
+    return await Promise.all(
+      parseWorktreeList(result.stdout).map(async (entry) => ({
+        ...entry,
+        resolved: await realpathOrSelf(entry.path),
+      })),
+    );
+  };
+  await run(["worktree", "prune"]);
+  const target = await realpathOrSelf(context.worktreePath);
+  let entries = await listWorktrees();
+  if (entries?.some((entry) => entry.resolved === target)) {
+    // 检出被中断时 git 会把新 worktree 标为锁定（initializing），需要两次 --force。
+    await run(["worktree", "remove", "--force", "--force", context.worktreePath]);
+    entries = await listWorktrees();
+  }
+  if (!entries || entries.some((entry) => entry.branchName === context.branchName)) return;
+  await run(["update-ref", "-d", `refs/heads/${context.branchName}`, context.baseCommit]);
 }
 
 /** 链接 worktree 的 Git 管理目录（`<common-dir>/worktrees/<name>`）。 */
