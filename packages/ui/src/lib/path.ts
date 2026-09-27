@@ -91,7 +91,10 @@ export function toFileUrl(path: string): string {
   return encodeUriPathForFileUrl(normalizedPath);
 }
 
-/** `child` 是否为 `parent` 自身或其下的路径；兼容 `/` 与 `\\`，Windows 盘符路径不区分大小写。 */
+/**
+ * `child` 是否为 `parent` 自身或其下的路径；兼容 `/` 与 `\\`，Windows 盘符路径不区分大小写。导出供单测使用。
+ * @lintignore
+ */
 export function isSameOrInsidePath(child: string, parent: string): boolean {
   const normalize = (value: string) => {
     const slashed = value.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -100,4 +103,25 @@ export function isSameOrInsidePath(child: string, parent: string): boolean {
   const normalizedChild = normalize(child);
   const normalizedParent = normalize(parent);
   return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`);
+}
+
+/**
+ * 与 isSameOrInsidePath 相同，但字面不匹配时再按真实路径比较：经符号链接或 junction 打开的路径
+ * 字面上不在 `parent` 下，真实路径却在。`resolvePath` 应返回真实路径（本地 Host 的 realpath）；
+ * `child` 无法解析（如已不存在）时视为不在其中，`parent` 无法解析时按字面路径比较。
+ */
+export async function isSameOrInsideRealPath(
+  child: string,
+  parent: string,
+  resolvePath: (path: string) => Promise<string>,
+): Promise<boolean> {
+  if (isSameOrInsidePath(child, parent)) return true;
+  const [realChild, realParent] = await Promise.all([
+    resolvePath(child).catch(() => null),
+    resolvePath(parent).catch(() => parent),
+  ]);
+  return (
+    realChild !== null &&
+    (isSameOrInsidePath(realChild, realParent) || isSameOrInsidePath(realChild, parent))
+  );
 }

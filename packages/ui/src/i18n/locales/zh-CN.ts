@@ -925,6 +925,8 @@ const zhCN: Record<string, string> = {
     "项目已从侧栏移除，但 worktree 目录 {path} 未能删除：{error}。目录与分支 {branchName} 均已保留。",
   "git.worktree.delete.leftoverAfterRelease":
     "项目已从侧栏移除，但 worktree 目录 {path} 未能完全删除：{error}。分支 {branchName} 已保留，点击重试可删除剩余内容。",
+  "git.worktree.delete.releaseFailed":
+    "未能停止 {path} 中运行的任务和终端，因此没有删除任何内容。目录与分支 {branchName} 均已保留，点击重试可再次停止并删除 worktree。",
   "git.worktree.delete.otherEntriesOpen": "这个 worktree 还作为其它项目打开着，请先关闭：{names}",
   "git.worktree.delete.dirtyAfterRelease":
     "确认后 {path} 中出现了新的未提交改动，因此没有删除。项目已从侧栏移除，分支 {branchName} 已保留。",
