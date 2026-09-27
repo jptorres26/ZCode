@@ -28,19 +28,27 @@ export async function readGitPullRequestLink(context: {
     return result.exitCode === 0 && value.length > 0 ? value : null;
   };
 
-  const [upstreamRemote, mergeRef, branchPushRemote, pushDefault] = await Promise.all([
-    readTrimmed(["config", "--get", `branch.${context.branchName}.remote`]),
-    readTrimmed(["config", "--get", `branch.${context.branchName}.merge`]),
-    readTrimmed(["config", "--get", `branch.${context.branchName}.pushRemote`]),
-    readTrimmed(["config", "--get", "remote.pushDefault"]),
-  ]);
-  const remoteName = branchPushRemote ?? pushDefault ?? upstreamRemote;
+  const [upstreamRemote, mergeRef, branchPushRemote, pushDefaultRemote, pushDefaultMode] =
+    await Promise.all([
+      readTrimmed(["config", "--get", `branch.${context.branchName}.remote`]),
+      readTrimmed(["config", "--get", `branch.${context.branchName}.merge`]),
+      readTrimmed(["config", "--get", `branch.${context.branchName}.pushRemote`]),
+      readTrimmed(["config", "--get", "remote.pushDefault"]),
+      readTrimmed(["config", "--get", "push.default"]),
+    ]);
+  const remoteName = branchPushRemote ?? pushDefaultRemote ?? upstreamRemote;
   // `.` 表示本地仓库，没有可以发起 PR 的远程。
   if (!remoteName || remoteName === ".") {
     return null;
   }
+  // 修复原因：推送到上游所在的远程时一律取上游分支，但 push.default 为 current/matching 时推送的是同名分支，
+  // 链接的源分支会错。修复依据：只有 push.default 为 upstream（旧名 tracking）且推送到上游所在的远程时，
+  // 推送目标才是上游分支；simple（默认）在分支名不同的情况下拒绝推送，其余情况都推送同名分支。
+  const pushesToUpstreamBranch =
+    remoteName === upstreamRemote &&
+    (pushDefaultMode === "upstream" || pushDefaultMode === "tracking");
   let headBranch: string;
-  if (remoteName === upstreamRemote) {
+  if (pushesToUpstreamBranch) {
     if (!mergeRef?.startsWith(REFS_HEADS_PREFIX)) return null;
     headBranch = mergeRef.slice(REFS_HEADS_PREFIX.length);
   } else {

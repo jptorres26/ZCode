@@ -23,11 +23,11 @@ token is needed, and no credentials are stored on the client.
 1. Only computed when HEAD is on a branch (not detached).
 2. Push destination (the same one a bare `git push` uses): the remote is `branch.<name>.pushRemote`,
    then `remote.pushDefault`, then `branch.<name>.remote`; with none, or `.`, the result is `null`.
-   When it is the upstream's remote, the source branch is `branch.<name>.merge` with `refs/heads/`
-   stripped (`null` if it isn't a branch ref). When it is another remote (such as a fork), the source
-   branch is the local branch name, since `push.default` simple/current/matching push the same name
-   there. The link points at the repository that was pushed to, and the host's page picks the target
-   repository.
+   When it is the upstream's remote and `push.default` is `upstream` (formerly `tracking`), the source
+   branch is `branch.<name>.merge` with `refs/heads/` stripped (`null` if it isn't a branch ref).
+   Otherwise the source branch is the local branch name: `current` and `matching` push the same
+   name, and the default `simple` refuses to push when the names differ. The link points at the
+   repository that was pushed to, and the host's page picks the target repository.
 3. Remote address: `git remote get-url --push <remote>`, the address pushed to (`remote.<name>.pushurl`
    when set, otherwise the fetch URL; with `insteadOf` / `pushInsteadOf` applied). Supports `https://`,
    `http://`, `ssh://`, `git://`, and the scp form `user@host:owner/repo.git`. The web address
