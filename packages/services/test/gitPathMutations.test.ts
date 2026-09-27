@@ -248,6 +248,18 @@ withRepo(
 );
 
 withRepo(
+  "unstage works for a new file changed again after staging, in a repository without commits",
+  { commit: false },
+  async (dir) => {
+    await git(dir, "add", "a.txt");
+    await writeFile(join(dir, "a.txt"), "changed after staging\n");
+    await createGitCliRepo().unstage(dir, ["a.txt"]);
+    assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "changed after staging\n");
+    assert.ok((await porcelain(dir)).includes("?? a.txt"));
+  },
+);
+
+withRepo(
   "discard of a staged file in a repository without commits removes it",
   { commit: false },
   async (dir) => {
