@@ -139,6 +139,10 @@ test("existing or invalid branch names return an issue and add no worktree", asy
     const existing = await gitRepo.createWorktree(repo, "main");
     assert.equal(existing.ok, false);
     if (!existing.ok) assert.equal(existing.issues[0]?.code, "branch-already-exists");
+    // 已存在、未检出且指向 HEAD 的分支：失败后的回滚不能把它当成这次新建的分支删掉
+    await git(repo, "branch", "idle");
+    assert.equal((await gitRepo.createWorktree(repo, "idle")).ok, false);
+    assert.equal(await git(repo, "branch", "--list", "idle"), "idle");
 
     for (const name of ["bad..name", "  ", "-x"]) {
       const invalid = await gitRepo.createWorktree(repo, name);
@@ -475,5 +479,40 @@ test("an unreadable worktree status needs consent for both changes and ignored f
     });
     assert.equal(readable?.statusUnknown, undefined);
     assert.equal(readable?.hasIgnoredFiles, true);
+  });
+});
+
+test("a failed worktree add is rolled back so the same branch name can be retried", async () => {
+  await withRepo(async (repo, worktreesRootDir) => {
+    const gitRepo = createGitCliRepo({ worktreesRootDir });
+    const slugDir = join(getWorktreeContainerDir(worktreesRootDir, repo), "retry-me");
+    // 检出失败（smudge 过滤器出错）：git 清理了目录，却留下了检出前建好的新分支
+    await writeFile(join(repo, ".gitattributes"), "*.txt filter=boom\n");
+    await git(repo, "add", ".gitattributes");
+    await git(repo, "commit", "-q", "-m", "attrs");
+    await git(repo, "config", "filter.boom.clean", "cat");
+    await git(repo, "config", "filter.boom.smudge", "false");
+    await git(repo, "config", "filter.boom.required", "true");
+    assert.equal((await gitRepo.createWorktree(repo, "retry-me")).ok, false);
+    assert.equal(await git(repo, "branch", "--list", "retry-me"), "");
+    assert.equal(await worktreeCount(repo), 1);
+    assert.equal(await exists(slugDir), false);
+    await git(repo, "config", "--unset", "filter.boom.smudge");
+    await git(repo, "config", "--unset", "filter.boom.required");
+
+    if (process.platform !== "win32") {
+      // 检出后 post-checkout 钩子失败：worktree 已登记并检出了新分支，同样整体回滚
+      const hook = join(repo, ".git", "hooks", "post-checkout");
+      await writeFile(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      assert.equal((await gitRepo.createWorktree(repo, "retry-me")).ok, false);
+      assert.equal(await git(repo, "branch", "--list", "retry-me"), "");
+      assert.equal(await worktreeCount(repo), 1);
+      assert.equal(await exists(slugDir), false);
+      await rm(hook);
+    }
+
+    const created = await gitRepo.createWorktree(repo, "retry-me");
+    assert.equal(created.ok, true);
+    if (created.ok) assert.equal(created.worktreePath, slugDir);
   });
 });

@@ -36,12 +36,21 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
    file tree or `git status`.
 3. Run `git worktree prune` first (it only drops entries whose directory was deleted; otherwise a
    manually deleted directory of the same name makes the add fail), then
-   `git worktree add -b <branch> <path> HEAD`: the new branch starts at the current HEAD.
+   `git worktree add -b <branch> <path> <HEAD commit>`: the new branch starts at the current HEAD (the
+   commit is read first, so a rollback can check against it).
    **Uncommitted changes are not carried into the new worktree.**
 4. If the original workspace is a subdirectory of the repository, the returned `workspacePath` is the
    same subdirectory inside the new worktree. If that subdirectory doesn't exist at HEAD (untracked,
    ignored or new), it falls back to the worktree root.
-5. On failure, parse git's output into issues; on success, invalidate the original workspace's cache.
+5. On failure, parse git's output into issues and roll back what the attempt left behind. Git creates
+   the branch before the checkout, so when the checkout fails or is killed on timeout, the branch (and
+   sometimes a half-made folder registered as locked) stays, and retrying the same input fails with
+   "branch already exists". The rollback runs `git worktree prune`; if the target folder is still
+   registered, `git worktree remove --force --force` deletes it (the attempt created it; it didn't exist
+   before); and if the branch didn't exist before the attempt, isn't checked out in any worktree and
+   still points at the starting commit, `git update-ref -d refs/heads/<branch> <commit>` deletes it. The
+   rollback is best effort, and the original issues are returned either way. On success, invalidate the
+   original workspace's cache.
 
 ## Interaction
 
