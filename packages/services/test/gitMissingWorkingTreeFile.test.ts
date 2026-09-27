@@ -36,6 +36,8 @@ test("files gone from the working tree are flagged in every source", async () =>
     await writeFile(join(main, "kept.txt"), "a\n");
     await writeFile(join(main, "staged-then-deleted.txt"), "a\n");
     await writeFile(join(main, "branch-then-deleted.txt"), "a\n");
+    await writeFile(join(main, "renamed-away.txt"), "a\n");
+    await writeFile(join(main, "renamed-recreated.txt"), "a\n");
     await git(main, "add", ".");
     await git(main, "commit", "-q", "-m", "init");
     await git(main, "remote", "add", "origin", remote);
@@ -43,8 +45,14 @@ test("files gone from the working tree are flagged in every source", async () =>
     // 分支对比中有改动、随后在本地删除（未提交）
     await writeFile(join(main, "branch-then-deleted.txt"), "a\nb\n");
     await writeFile(join(main, "kept.txt"), "a\nb\n");
+    await writeFile(join(main, "renamed-away.txt"), "a\nb\n");
+    await writeFile(join(main, "renamed-recreated.txt"), "a\nb\n");
     await git(main, "commit", "-q", "-am", "change");
     await unlink(join(main, "branch-then-deleted.txt"));
+    // 分支对比中有改动、随后在本地重命名走；另一个重命名后又在原路径新建了文件
+    await git(main, "mv", "renamed-away.txt", "renamed-to.txt");
+    await git(main, "mv", "renamed-recreated.txt", "renamed-recreated-to.txt");
+    await writeFile(join(main, "renamed-recreated.txt"), "new\n");
     // MD：index 中已修改，工作区中已删除
     await writeFile(join(main, "staged-then-deleted.txt"), "a\nb\n");
     await git(main, "add", "staged-then-deleted.txt");
@@ -58,17 +66,27 @@ test("files gone from the working tree are flagged in every source", async () =>
         .map((change) => [change.repoRelativePath, change.isMissingInWorkingTree ?? false])
         .sort();
     const staged = await service.getChanges({ workspacePath: main, sourceId: "staged" });
-    assert.deepEqual(flags(staged), [["staged-then-deleted.txt", true]]);
-    assert.equal(staged[0]!.kind, "modified");
+    assert.deepEqual(flags(staged), [
+      ["renamed-recreated-to.txt", false],
+      ["renamed-to.txt", false],
+      ["staged-then-deleted.txt", true],
+    ]);
+    assert.equal(
+      staged.find((change) => change.repoRelativePath === "staged-then-deleted.txt")?.kind,
+      "modified",
+    );
     const unstaged = await service.getChanges({ workspacePath: main, sourceId: "unstaged" });
     assert.deepEqual(flags(unstaged), [
       ["branch-then-deleted.txt", true],
+      ["renamed-recreated.txt", false],
       ["staged-then-deleted.txt", true],
     ]);
     const comparison = await service.getBranchComparison({ workspacePath: main });
     assert.deepEqual(flags(comparison.changes), [
       ["branch-then-deleted.txt", true],
       ["kept.txt", false],
+      ["renamed-away.txt", true],
+      ["renamed-recreated.txt", false],
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });
