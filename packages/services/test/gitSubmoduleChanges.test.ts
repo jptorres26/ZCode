@@ -29,7 +29,7 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return stdout;
 }
 
-test("status marks submodule entries and leaves other entries unchanged", () => {
+test("status marks entries that are a submodule in the working tree", () => {
   const hash = "0".repeat(40);
   const { entries } = parseStatusPorcelain(
     [
@@ -38,6 +38,10 @@ test("status marks submodule entries and leaves other entries unchanged", () => 
       `2 R. S... 160000 160000 160000 ${hash} ${hash} R100 libs/new`,
       "libs/old",
       `u UU N... 100644 100644 100644 100644 ${hash} ${hash} ${hash} conflict.txt`,
+      // 子模块在工作区被换成普通文件：<sub> 仍为 S...，但文件可以预览
+      `1 .T S... 160000 160000 100644 ${hash} ${hash} my sub`,
+      // 普通文件在工作区被换成子模块
+      `1 .T S... 100644 100644 160000 ${hash} ${hash} was-file`,
       "",
     ].join("\0"),
   );
@@ -48,13 +52,15 @@ test("status marks submodule entries and leaves other entries unchanged", () => 
       ["src/app.ts", false],
       ["libs/new", true],
       ["conflict.txt", false],
+      ["my sub", false],
+      ["was-file", true],
     ],
   );
   assert.equal("isSubmodule" in entries[1]!, false);
   assert.equal(entries[2]!.originalPath, "libs/old");
 });
 
-test("raw diff output yields the gitlink paths only", () => {
+test("raw diff output yields the paths that are a gitlink on the new side", () => {
   const paths = parseGitlinkPaths(
     [
       ":160000 160000 abc1234 def5678 M",
@@ -63,10 +69,14 @@ test("raw diff output yields the gitlink paths only", () => {
       "src/app.ts",
       ":000000 160000 0000000 def5678 A",
       "libs/new",
+      ":160000 100644 abc1234 def5678 T",
+      "now-a-file",
+      ":100644 160000 abc1234 def5678 T",
+      "now-a-submodule",
       "",
     ].join("\0"),
   );
-  assert.deepEqual([...paths], ["vendor/lib", "libs/new"]);
+  assert.deepEqual([...paths], ["vendor/lib", "libs/new", "now-a-submodule"]);
 });
 
 test("changes and the branch comparison flag a changed submodule, not files", async () => {

@@ -295,7 +295,8 @@ export function parseStatusPorcelain(stdout: string): {
     }
 
     if (record.startsWith("1 ")) {
-      const match = record.match(/^1 ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/);
+      // 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+      const match = record.match(/^1 ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ (.+)$/);
       if (!match) {
         continue;
       }
@@ -315,7 +316,8 @@ export function parseStatusPorcelain(stdout: string): {
     }
 
     if (record.startsWith("2 ")) {
-      const match = record.match(/^2 ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/);
+      // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>
+      const match = record.match(/^2 ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ [^ ]+ (.+)$/);
       if (!match) {
         continue;
       }
@@ -340,7 +342,8 @@ export function parseStatusPorcelain(stdout: string): {
     }
 
     const match = record.match(
-      /^u ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/,
+      // u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+      /^u ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ [^ ]+ (.+)$/,
     );
     if (!match) {
       continue;
@@ -361,17 +364,21 @@ export function parseStatusPorcelain(stdout: string): {
   return { branchName, trackingBranchName, headRefType, ahead, behind, entries };
 }
 
+/** gitlink（子模块）的文件模式。 */
+const GITLINK_MODE = "160000";
+
 /**
- * porcelain v2 的 `<sub>` 字段：子模块为 `S<c><m><u>`，普通条目为 `N...`。
+ * 工作区一侧（porcelain v2 的 `<mW>`）是否为子模块。
  * 修复原因：子模块在 status 中是普通的 tracked 改动，Review 面板的“打开文件”会把目录交给文件预览并报读取错误。
- * 修复依据：解析时标记子模块，界面据此禁用文件预览。只在是子模块时加字段，其它条目形状不变。
+ * 修复依据：“打开文件”打开的是工作区版本，因此按工作区模式判断，而不是 `<sub>` 字段：
+ * 任一侧是子模块时 `<sub>` 都为 `S...`，子模块被换成普通文件后文件仍可预览。只在是子模块时加字段，其它条目形状不变。
  */
-function submoduleFlag(sub: string): { isSubmodule?: true } {
-  return sub.startsWith("S") ? { isSubmodule: true } : {};
+function submoduleFlag(worktreeMode: string): { isSubmodule?: true } {
+  return worktreeMode === GITLINK_MODE ? { isSubmodule: true } : {};
 }
 
 /**
- * `git diff --raw -z` 中两侧任一为 gitlink（mode 160000）的路径。与 `--no-renames` 一起使用：每条记录后只有一个路径。
+ * `git diff --raw -z` 中新的一侧为 gitlink（mode 160000）的路径。与 `--no-renames` 一起使用：每条记录后只有一个路径。
  */
 export function parseGitlinkPaths(stdout: string): Set<string> {
   const records = stdout.split("\0");
@@ -379,10 +386,10 @@ export function parseGitlinkPaths(stdout: string): Set<string> {
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index]!;
     if (!record.startsWith(":")) continue;
-    const [srcMode, dstMode] = record.slice(1).split(" ");
+    const dstMode = record.slice(1).split(" ")[1];
     const path = records[index + 1];
     index += 1;
-    if (path && (srcMode === "160000" || dstMode === "160000")) {
+    if (path && dstMode === GITLINK_MODE) {
       paths.add(normalizeGitPath(path));
     }
   }
