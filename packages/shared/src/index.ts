@@ -56,6 +56,7 @@ export {
 } from "./projectActions.js";
 export {
   buildGitPullRequestLink,
+  parseGitRemoteWebLocation,
   type GitPullRequestLink,
   type GitPullRequestProvider,
 } from "./gitPullRequestLink.js";

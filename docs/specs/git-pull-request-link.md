@@ -35,7 +35,9 @@ Codex desktop 在推送后可以直接发起 PR。ZCode 只有提交与推送，
    `bitbucket.org` → Bitbucket；其它返回 `null`（不猜测未知平台的 URL 格式）。
 5. 目标分支：推送所用远程的 `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` 去掉远程前缀；远程为
    `--set-upstream <remote>` 中的远程，不带参数的推送则为 git 按当前分支解析的推送远程
-   （`git for-each-ref --format=%(push:remotename) refs/heads/<branch>`）。取不到时为 `null`，由平台使用默认分支。源分支与目标分支相同时返回 `null`。
+   （`git for-each-ref --format=%(push:remotename) refs/heads/<branch>`）。该远程的 fetch 地址（`git remote get-url <remote>`）
+   与推送到的地址必须是同一个仓库（主机与路径相同，不区分大小写）才取：配置了 `pushurl`（从上游拉取、推送到 fork）时
+   remote HEAD 是上游的默认分支，fork 中可能没有它。取不到或不是同一个仓库时为 `null`，由平台使用推送到的仓库的默认分支。源分支与目标分支相同时返回 `null`。
 6. URL：
    - GitHub：`/<path>/compare/<base>...<head>?expand=1`（无 base 时 `/compare/<head>?expand=1`）；
    - GitLab：`/<path>/-/merge_requests/new?merge_request[source_branch]=<head>[&merge_request[target_branch]=<base>]`；
