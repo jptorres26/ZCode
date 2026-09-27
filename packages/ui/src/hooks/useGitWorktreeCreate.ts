@@ -39,11 +39,7 @@ export function useGitWorktreeCreate(workspacePath: string) {
         return null;
       } catch (error: unknown) {
         const message = getErrorMessage(error);
-        logger.warn("[GitWorktree] 创建 worktree 失败", {
-          workspacePath,
-          branchName,
-          error: message,
-        });
+        logger.warn("[GitWorktree] 创建 worktree 失败", { error: message });
         toast(intl.formatMessage({ id: "git.worktree.error.createFailed" }, { error: message }));
         return null;
       } finally {

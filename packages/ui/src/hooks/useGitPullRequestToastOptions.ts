@@ -37,10 +37,7 @@ export function useGitPullRequestToastOptions(workspacePath: string) {
         variant: "info",
       };
     } catch (error: unknown) {
-      logger.warn("[GitActionMenu] 读取拉取请求链接失败", {
-        workspacePath,
-        error: getErrorMessage(error),
-      });
+      logger.warn("[GitActionMenu] 读取拉取请求链接失败", { error: getErrorMessage(error) });
       return undefined;
     }
   }, [gitService, intl, platform, workspacePath]);

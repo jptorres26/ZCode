@@ -34,17 +34,13 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
       }
       inFlightRef.current = true;
       setPending(true);
-      logger.info(`[GitPane] ${kind} 开始`, { workspacePath, count: paths.length });
+      logger.info(`[GitPane] ${kind} 开始`, { count: paths.length });
       try {
         await mutate();
         return true;
       } catch (error: unknown) {
         const message = getErrorMessage(error);
-        logger.warn(`[GitPane] ${kind} 失败`, {
-          workspacePath,
-          count: paths.length,
-          error: message,
-        });
+        logger.warn(`[GitPane] ${kind} 失败`, { count: paths.length, error: message });
         toast(intl.formatMessage({ id: "git.fileAction.failed" }, { message }), {
           variant: "warning",
         });

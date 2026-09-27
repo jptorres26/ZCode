@@ -830,7 +830,9 @@ export function useAppPanels(options: {
           remoteSessionId: workspaceRemoteSessionId,
         }),
       );
-      logger.info(`[App] 运行项目操作 tab=${action.name} workspace=${workspaceAbsPath}`);
+      // 修复原因：操作名称来自仓库配置、workspace 路径含用户名，info 日志会在生产环境落盘并随诊断收集。
+      // 修复依据：只记录生成的标签 id。
+      logger.info("[App] 运行项目操作", { tabId });
     },
     [
       isOfficeMode,

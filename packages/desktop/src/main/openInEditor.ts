@@ -156,10 +156,9 @@ async function openVSCodeRemoteSshFolder(
       }
       if (process.platform !== "darwin") {
         // `open -a` 只存在于 macOS；Linux 上它是 openvt 或不存在，回退会执行无关程序并掩盖 VS Code 的真实错误。
+        // 不记录路径与参数：其中含用户名、远程主机与目录。
         logger.warn("[editors] 打开 VS Code 远程工作区失败", {
           editorId,
-          path,
-          args,
           error: stringifyError(error),
         });
         return { success: false, error: stringifyError(error) };
@@ -224,10 +223,9 @@ async function openVSCodeRemoteWslFolder(
       }
       if (process.platform !== "darwin") {
         // `open -a` 只存在于 macOS；Linux 上它是 openvt 或不存在，回退会执行无关程序并掩盖 VS Code 的真实错误。
+        // 不记录路径与参数：其中含用户名、远程主机与目录。
         logger.warn("[editors] 打开 VS Code WSL 工作区失败", {
           editorId,
-          path,
-          args,
           error: stringifyError(error),
         });
         return { success: false, error: stringifyError(error) };

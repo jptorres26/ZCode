@@ -1115,8 +1115,9 @@ async function readTargetConfigForExistingNames(
   try {
     return await readJsonFileOrEmpty(configPath);
   } catch (error) {
+    // 只记录文件名：完整路径含用户名或项目目录。
     log.warn("[settings-sync] target config is unreadable; existing names unknown", {
-      configPath,
+      configFile: basename(configPath),
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
