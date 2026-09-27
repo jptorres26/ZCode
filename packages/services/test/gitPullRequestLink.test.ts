@@ -55,6 +55,36 @@ test("branches without an upstream, or with a local upstream, have no link", asy
   });
 });
 
+test("a branch pushed to a fork links to the fork with the pushed branch", async () => {
+  await withRepo(async (dir) => {
+    const head = (await git(dir, "rev-parse", "HEAD")).trim();
+    await git(dir, "update-ref", "refs/remotes/origin/main", head);
+    await git(dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+    await git(dir, "remote", "add", "fork", "git@github.com:me/demo.git");
+    await git(dir, "update-ref", "refs/remotes/fork/main", head);
+    await git(dir, "symbolic-ref", "refs/remotes/fork/HEAD", "refs/remotes/fork/main");
+    // 三角工作流：跟踪上游的 main，推送到 fork 的同名分支
+    await git(dir, "checkout", "-q", "-b", "fix-typo");
+    await git(dir, "config", "branch.fix-typo.remote", "origin");
+    await git(dir, "config", "branch.fix-typo.merge", "refs/heads/main");
+    // 只看上游时来源分支是 main，与默认分支相同，没有链接
+    assert.equal(await createGitCliRepo().getPullRequestLink(dir), null);
+
+    await git(dir, "config", "remote.pushDefault", "fork");
+    const expected = {
+      provider: "github",
+      url: "https://github.com/me/demo/compare/main...fix-typo?expand=1",
+      headBranch: "fix-typo",
+      baseBranch: "main",
+    };
+    assert.deepEqual(await createGitCliRepo().getPullRequestLink(dir), expected);
+    // branch.<name>.pushRemote 优先于 remote.pushDefault
+    await git(dir, "config", "remote.pushDefault", "origin");
+    await git(dir, "config", "branch.fix-typo.pushRemote", "fork");
+    assert.deepEqual(await createGitCliRepo().getPullRequestLink(dir), expected);
+  });
+});
+
 test("a detached HEAD has no link", async () => {
   await withRepo(async (dir) => {
     await git(dir, "checkout", "-q", "--detach");
