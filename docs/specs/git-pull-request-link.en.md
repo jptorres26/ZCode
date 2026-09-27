@@ -11,25 +11,29 @@ token is needed, and no credentials are stored on the client.
 
 ## State owner and interfaces
 
-- The owner of remote information is the repository configuration. A new read-only method
-  `IGitService.getPullRequestLink({ workspacePath }): Promise<GitPullRequestLink | null>` is
-  implemented by `createGitService` → `GitCliRepo.getPullRequestLink`; remote workspaces forward it
-  through the existing generic proxy.
+- The only source of the push destination is the push that just finished. `GitCliRepo.push` runs
+  `git push --porcelain`, computes the link from its output after a successful push, and returns it
+  with the push result as `GitPushResult.pullRequestLink: GitPullRequestLink | null`; remote workspaces
+  forward it through the existing generic proxy. There is no separate lookup method, and the service
+  doesn't re-implement git's push rules (`pushRemote`, `pushDefault`, `push.default`,
+  `remote.<name>.push` refspecs, `pushurl`, `pushInsteadOf` and so on): the link used to be derived
+  from the configuration, and every rule it missed pointed it at a branch that didn't exist or at the
+  wrong repository.
 - `GitPullRequestLink`: `{ provider: "github" | "gitlab" | "bitbucket"; url; headBranch; baseBranch | null }`.
 - URL construction is the pure function `buildGitPullRequestLink` in `@zcode/shared`, for unit testing.
 
 ## Resolution rules
 
-1. Only computed when HEAD is on a branch (not detached).
-2. Push destination (the same one a bare `git push` uses): the remote is `branch.<name>.pushRemote`,
-   then `remote.pushDefault`, then `branch.<name>.remote`; with none, or `.`, the result is `null`.
-   When it is the upstream's remote and `push.default` is `upstream` (formerly `tracking`), the source
-   branch is `branch.<name>.merge` with `refs/heads/` stripped (`null` if it isn't a branch ref).
-   Otherwise the source branch is the local branch name: `current` and `matching` push the same
-   name, and the default `simple` refuses to push when the names differ. The link points at the
-   repository that was pushed to, and the host's page picks the target repository.
-3. Remote address: `git remote get-url --push <remote>`, the address pushed to (`remote.<name>.pushurl`
-   when set, otherwise the fetch URL; with `insteadOf` / `pushInsteadOf` applied). Supports `https://`,
+1. A push only happens with HEAD on a branch (not detached), so there is always a current branch name.
+2. Source branch: the porcelain output has one line per ref, `<flag>\t<from>:<to>\t<summary>`. It takes
+   the first line whose `from` is `refs/heads/<current branch>` (or `HEAD` from a push refspec), whose
+   `to` starts with `refs/heads/`, and that wasn't rejected (`!`) or a deletion (`-`), and strips
+   `refs/heads/`. With no such line (the current branch wasn't pushed, for example because
+   `remote.<name>.push` doesn't include it), the result is `null`. The link points at the repository
+   that was pushed to, and the host's page picks the target repository.
+3. Remote address: the `To <url>` of that line's section, which is the address git actually pushed to
+   (with `pushurl` and `insteadOf` / `pushInsteadOf` applied, and user info already removed by git).
+   Supports `https://`,
    `http://`, `ssh://`, `git://`, and the scp form `user@host:owner/repo.git`. The web address
    always drops user names, passwords, and tokens; ssh / git / scp forms become `https://host/...`
    and drop the ssh port. In those forms the host may be an ssh alias: aliases like `github.com-work`
@@ -40,8 +44,11 @@ token is needed, and no credentials are stored on the client.
 4. Platform: a host of `github.com` or containing `github` → GitHub; `gitlab.com` or containing
    `gitlab` → GitLab; `bitbucket.org` → Bitbucket; anything else returns `null` (URL formats of
    unknown platforms are not guessed).
-5. Target branch: `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` with the remote
-   prefix removed; when unavailable it is `null` and the platform uses its default branch. When
+5. Target branch: `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` of the remote pushed to,
+   with the remote prefix removed. That remote is the one in `--set-upstream <remote>`, or for a bare
+   push the push remote git resolves for the current branch
+   (`git for-each-ref --format=%(push:remotename) refs/heads/<branch>`). When unavailable it is `null`
+   and the platform uses its default branch. When
    the source and target branch are the same the result is `null`.
 6. URL:
    - GitHub: `/<path>/compare/<base>...<head>?expand=1` (without a base, `/compare/<head>?expand=1`);
@@ -51,17 +58,20 @@ token is needed, and no credentials are stored on the client.
 
 ## Interaction
 
-- After a successful push (push dialog or "Commit and push") the UI looks up the link once; when
-  one exists, the success toast carries a "Create pull request" action ("Create merge request" for
+- After a successful push (push dialog or "Commit and push") the UI uses the link from the push
+  result; when one exists, the success toast carries a "Create pull request" action ("Create merge request" for
   GitLab) with a longer display time, opened through `IPlatformService.openExternal`.
-- A failed lookup is only logged and does not affect the push result toast.
+- When computing the link fails, it is `null`, which doesn't affect the push result or its toast.
 - Copy uses `git.actionMenu.pullRequest.*`, provided in both `en-US` and `zh-CN`.
 
 ## Acceptance
 
 - `packages/ui/test/gitPullRequestLink.test.ts`: remote address forms, credential stripping,
   unknown platforms, same-name branches, encoding.
-- `packages/services/test/gitPullRequestLink.test.ts`: upstream, default branch, and no-upstream
-  cases in real temporary repositories.
-- Web dev server + Playwright: pushing to a local bare repository (`pushurl`) while the fetch URL
-  is GitHub shows the toast action, which opens the correct URL.
+- `packages/services/test/gitPullRequestLink.test.ts`: parsing the porcelain output, and real
+  temporary repositories pushing to local bare repositories through a `core.sshCommand` that routes
+  GitHub ssh addresses locally. It covers a first push (`--set-upstream`), a fork (`pushDefault` /
+  `pushRemote`), `pushurl`, `push.default`, `remote.<name>.push` (including `HEAD:<branch>`), and a
+  current branch that wasn't pushed.
+- Web dev server + Playwright: after a push routed to a local bare repository the same way, the toast
+  shows the action, which opens the correct URL.

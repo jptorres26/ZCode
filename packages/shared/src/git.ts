@@ -1,3 +1,4 @@
+import type { GitPullRequestLink } from "./gitPullRequestLink.js";
 import type { Locale } from "./protocol.js";
 
 export type GitHeadRefType = "branch" | "detached";
@@ -316,6 +317,8 @@ export interface GitPushResult {
   remoteName: string | null;
   setUpstream: boolean;
   summary: GitRepositorySummary;
+  /** 这次推送的当前分支在托管平台上新建 PR 的链接（取自推送输出）；无法构造时为 null。 */
+  pullRequestLink: GitPullRequestLink | null;
 }
 
 export interface GitRefreshResult {
