@@ -88,10 +88,14 @@ branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }` when those con
   `git status --porcelain --untracked-files=normal --ignored`, and runs the same status inside every
   initialized submodule with `git submodule foreach --quiet --recursive` (the top-level status doesn't
   enter submodules, so files ignored there aren't reported, yet a `--force` removal deletes them). The
-  entries of both are combined. It then finds uninitialized submodules (lines starting with `-`) with
-  `git submodule status --recursive` and counts a non-empty folder of one as uncommitted changes
-  (foreach doesn't visit them, the top-level status doesn't report files under a gitlink folder, and
-  even a removal without `--force` deletes them). Any read failing counts as an unreadable status:
+  entries of both are combined. It then checks the submodule folders listed in `.gitmodules`
+  (read with `git config -z --file .gitmodules --get-regexp`, NUL-separated records, so a path with a
+  newline isn't cut short): a non-empty folder without `.git` (uninitialized or deinitialized) counts
+  as uncommitted changes (foreach doesn't visit them, the top-level status doesn't report files under
+  a gitlink folder, and even a removal without `--force` deletes them), and an initialized one is
+  checked recursively through its own `.gitmodules` (up to 8 levels; deeper counts as unreadable).
+  `git submodule status --recursive` is used only to detect failure (for example a gitlink in the
+  index with no `.gitmodules` entry). Any read failing counts as an unreadable status:
   `hasUncommittedChanges` says whether
   there were changes, including untracked files and files inside uninitialized submodule folders; `hasIgnoredFiles` says whether there were files Git
   ignores (`!! ` entries such as `.env` or installed dependencies), which are deleted with the worktree.

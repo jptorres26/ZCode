@@ -621,3 +621,48 @@ test("files inside an uninitialized submodule folder count as uncommitted change
     assert.ok(await exists(join(created.worktreePath, "sm", "cache", "x")));
   });
 });
+
+test("an uninitialized submodule whose path contains a newline is still checked", async () => {
+  if (process.platform === "win32") return;
+  await withRepo(async (repo, worktreesRootDir) => {
+    const sub = join(repo, "..", "sub");
+    await mkdir(sub);
+    await git(sub, "-c", "init.defaultBranch=main", "init", "-q");
+    await writeFile(join(sub, "f.txt"), "f\n");
+    await git(sub, "add", ".");
+    await git(sub, "-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-q", "-m", "sub");
+    // 名称与路径不同，路径里带换行；按行解析 `git submodule status` 会把路径截成 "odd"
+    const oddPath = "odd\nsm";
+    await git(
+      repo,
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      "-q",
+      "--name",
+      "foo",
+      sub,
+      oddPath,
+    );
+    await git(repo, "commit", "-q", "-m", "add submodule");
+    const gitRepo = createGitCliRepo({ worktreesRootDir });
+    const created = await gitRepo.createWorktree(repo, "odd-sub");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    assert.equal(
+      (await gitRepo.getManagedWorktree(created.worktreePath))?.hasUncommittedChanges,
+      false,
+    );
+    await writeFile(join(created.worktreePath, oddPath, "local.txt"), "local\n");
+    assert.equal(
+      (await gitRepo.getManagedWorktree(created.worktreePath))?.hasUncommittedChanges,
+      true,
+    );
+    assert.deepEqual(await gitRepo.removeWorktree(created.worktreePath, { force: false }), {
+      ok: false,
+      reason: "dirty",
+    });
+    assert.ok(await exists(join(created.worktreePath, oddPath, "local.txt")));
+  });
+});
