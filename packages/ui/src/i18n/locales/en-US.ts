@@ -982,6 +982,8 @@ const enUS: Record<string, string> = {
   "git.branchSwitcher.section.branches": "Branches",
   "git.branchSwitcher.empty": "No matching branches",
   "git.branchSwitcher.currentDirty": "Uncommitted changes: {count} files",
+  "git.worktree.createdNotOpened":
+    "Created the worktree for {branchName} at {path}. It wasn't opened because you switched projects.",
   "git.worktree.delete.confirmTitle": "Delete this worktree?",
   "git.worktree.delete.confirmDescription":
     "The folder {path} will be deleted and the project removed from the sidebar. The branch {branchName} and its commits are kept.",

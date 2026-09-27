@@ -44,7 +44,9 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 - 复用“新建分支”对话框（`mode="worktree"` 切换文案），说明新 worktree 基于当前提交、不包含未提交改动。
 - 成功后：`requestV4ComposerDraftWorkspaceTransfer` 把当前草稿转移到新路径，再
   `handleStartDraftInWorkspace(新路径, undefined, "project")` 打开它并进入草稿；失败时对话框保持打开并以 toast
-  显示第一条 issue。创建进行中不能关闭对话框；宿主组件卸载后返回的结果被忽略，不会再转移草稿或切换 workspace。
+  显示第一条 issue。创建进行中不能关闭对话框。创建进行中对话框所在组件卸载，或切换到其它 workspace（组件可能保持挂载，
+  也可能重新挂载）时，结果不再转移草稿、不切换 workspace、不登记 setup 命令，而以 toast 说明 worktree 已创建但未打开，
+  并给出分支名与目录。对话框属于打开它的 workspace：workspace 变化时分支切换器关闭它。
 - 文案 `git.worktree.*`，`en-US` 与 `zh-CN` 同步提供。
 
 ## 删除 worktree

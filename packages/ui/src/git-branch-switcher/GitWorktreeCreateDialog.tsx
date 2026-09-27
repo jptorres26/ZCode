@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GitCreateWorktreeResult } from "@zcode/shared";
 import { Checkbox } from "@/components/ui/checkbox.js";
+import { toast } from "@/components/ui/toast.js";
 import { GitBranchCreateDialog } from "@/git-branch-switcher/GitBranchDialogs.js";
 import { useGitWorktreeCreate } from "@/hooks/useGitWorktreeCreate.js";
 import {
@@ -28,7 +29,7 @@ export function GitWorktreeCreateDialog({
   const { pending, create } = useGitWorktreeCreate(workspacePath);
   const setup = useWorktreeSetupConfig(workspacePath, open);
   // 修复原因：创建中（最长数分钟）用 Esc 关闭对话框或切走后，完成回调仍会转移草稿并切换 workspace。
-  // 修复依据：创建中不允许关闭；组件卸载后忽略结果。
+  // 修复依据：创建中不允许关闭；组件卸载后不再使用结果（见下方完成回调）。
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -36,6 +37,15 @@ export function GitWorktreeCreateDialog({
       mountedRef.current = false;
     };
   }, []);
+  // 修复原因：创建进行中切换到其它 workspace 时对话框所在组件可能保持挂载，mountedRef 仍为 true；完成回调会登记 setup
+  // 命令并调用 onCreated，把此时的草稿转移、切换到上一个 workspace 的新 worktree。组件因切换而重新挂载时，结果又被
+  // 静默丢弃，用户不知道 worktree 与分支已经建好。
+  // 修复依据：记下提交时的 workspace；完成时组件已卸载或 workspace 已切换，则不登记、不转移、不切换，
+  // 以 toast 说明 worktree 已创建但未打开。
+  const workspacePathRef = useRef(workspacePath);
+  useEffect(() => {
+    workspacePathRef.current = workspacePath;
+  }, [workspacePath]);
   const close = () => {
     onOpenChange(false);
     setBranchName("");
@@ -58,8 +68,21 @@ export function GitWorktreeCreateDialog({
       onSubmit={() => {
         // 提交时的命令即对话框展示的命令；读取尚未完成时不运行。
         const command = runSetup ? setupCommand : null;
+        const submittedWorkspacePath = workspacePath;
         void create(branchName.trim()).then((result) => {
-          if (!result || !mountedRef.current) return;
+          if (!result) return;
+          if (!mountedRef.current || workspacePathRef.current !== submittedWorkspacePath) {
+            if (mountedRef.current) close();
+            toast(
+              intl.formatMessage(
+                { id: "git.worktree.createdNotOpened" },
+                { branchName: result.branchName, path: result.worktreePath },
+              ),
+              // 提示里有目录路径，默认 3 秒读不完。
+              { variant: "info", durationMs: 8_000 },
+            );
+            return;
+          }
           if (command) {
             // 必须在宿主切换 workspace 之前登记，useAppPanels 在新 workspace key 生效后取出。
             // 本地 worktree 没有 workspaceIdentity，身份 key 即其路径。

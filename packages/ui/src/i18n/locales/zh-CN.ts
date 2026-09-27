@@ -912,6 +912,8 @@ const zhCN: Record<string, string> = {
   "git.branchSwitcher.section.branches": "分支",
   "git.branchSwitcher.empty": "未找到匹配分支",
   "git.branchSwitcher.currentDirty": "未提交的更改：{count} 个文件",
+  "git.worktree.createdNotOpened":
+    "已在 {path} 为 {branchName} 创建 worktree。项目已切换，因此没有打开它。",
   "git.worktree.delete.confirmTitle": "删除这个 worktree？",
   "git.worktree.delete.confirmDescription":
     "将删除文件夹 {path}，并从侧栏移除该项目。分支 {branchName} 及其提交会保留。",

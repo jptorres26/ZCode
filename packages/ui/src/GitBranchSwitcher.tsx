@@ -73,6 +73,12 @@ export function GitBranchSwitcher({
   const commandListRef = useRef<HTMLDivElement | null>(null);
   const [gitGraphDialogOpen, setGitGraphDialogOpen] = useState(false);
   const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
+  // 修复原因：切换 workspace 时对话框可能重新挂载（状态清空），打开状态却留在这里，新 workspace 出现一个用户没有打开过的
+  // “在新 worktree 中开始”对话框。修复依据：对话框属于打开它的 workspace，workspace 变化时关闭；
+  // 进行中的创建由对话框在完成时按“已切换”处理。
+  useEffect(() => {
+    setWorktreeDialogOpen(false);
+  }, [workspacePath]);
   const {
     open,
     setOpen,
