@@ -50,9 +50,10 @@ export function useManagedWorktreeDeletion(options: {
         if (!disposed) setManagedWorktree(worktree);
       })
       .catch((error: unknown) => {
+        // 修复原因：这里记录了 workspace 绝对路径与原始错误信息（其中通常也含路径），会把用户名与项目名写进诊断日志。
+        // 修复依据：与其它新增日志一致，只记录错误类别。
         logger.debug("[WorktreeDeletion] 读取 worktree 信息失败", {
-          workspacePath,
-          error: getErrorMessage(error),
+          errorKind: getErrorKindForLog(error),
         });
         if (!disposed) setManagedWorktree(null);
       });
