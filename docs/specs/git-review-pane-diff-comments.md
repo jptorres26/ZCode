@@ -35,7 +35,9 @@ dispatchCodeCommentAddToChat(payload + side)
   `side?: "L" | "R"`，缺省为 `R`；序列化时写入 `Side:`，解析时读取 `Side:`（缺失视为 `R`），保持往返一致。
 - 选中文本：`MultiFileDiff` 从对应侧的完整内容截取；`PatchDiff` 从 patch 的 hunk 中按侧重建行号 → 文本。
   文本在**开始草稿时**截取并随草稿保存，diff 自动刷新不会改变引用的代码；取不到任何非空文本时不提交（与文件预览一致）。
-- 草稿在卡片折叠（不可评论）时清空。
+- 草稿属于 workspace（身份 key `workspaceIdentity?.trim() || workspacePath` 与远程会话）、变更来源与文件：卡片折叠
+  （不可评论），或其中任一变化时清空（如切换到路径与改动文件都相同的另一个远程 workspace，卡片被复用，
+  否则会把 A 中引用的代码附到 B 的对话）；diff 内容自动刷新不改变范围，草稿保留。
 - 载荷：`sourcePath` 为文件绝对路径（按 workspace 的路径分隔符归一，Windows 下不产生 `\` 与 `/` 混合），`sourceTitle` 为文件名，`workspacePath` / `workspaceIdentity` 取 Review
   面板所在工作区。
 - 只有 `unstaged` 来源的新侧是工作区文件：此时 `R` 侧评论同时写入预览 store，并在 Review diff 的新增侧行内展示，

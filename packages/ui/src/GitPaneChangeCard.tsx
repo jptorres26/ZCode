@@ -94,6 +94,8 @@ export function GitPaneChangeCard({
   commentWorkspace?: {
     workspacePath: string;
     workspaceIdentity?: string;
+    remoteSessionId?: string;
+    sourceId: string;
     sharesWorkingTree: boolean;
   };
   absolutePath: string;

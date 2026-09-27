@@ -153,3 +153,34 @@ test("change paths follow the workspace's path separator", async () => {
   assert.equal(resolveGitChangeAbsolutePath("/home/me/repo", "src/a.ts"), "/home/me/repo/src/a.ts");
   assert.equal(resolveGitChangeAbsolutePath("/home/me/repo", "/abs/b.ts"), "/abs/b.ts");
 });
+
+test("a diff comment draft belongs to one workspace, source and file", async () => {
+  const { getDiffCommentDraftScopeKey } = await import("../src/GitPane/diffComments.js");
+  const base = {
+    workspacePath: "/repo",
+    workspaceIdentity: "ssh:host-a:/repo",
+    remoteSessionId: "session-a",
+    sourceId: "unstaged",
+    sourcePath: "/repo/a.ts",
+  };
+  const key = getDiffCommentDraftScopeKey(base);
+  assert.equal(getDiffCommentDraftScopeKey(null), null);
+  // 路径相同的另一个远程 workspace、另一个会话、另一个来源或文件：都是不同的范围
+  for (const other of [
+    { ...base, workspaceIdentity: "ssh:host-b:/repo" },
+    { ...base, remoteSessionId: "session-b" },
+    { ...base, sourceId: "staged" },
+    { ...base, sourcePath: "/repo/b.ts" },
+  ]) {
+    assert.notEqual(getDiffCommentDraftScopeKey(other), key);
+  }
+  // 本地 workspace 没有身份时按路径
+  assert.equal(
+    getDiffCommentDraftScopeKey({ ...base, workspaceIdentity: "  ", remoteSessionId: undefined }),
+    getDiffCommentDraftScopeKey({
+      ...base,
+      workspaceIdentity: undefined,
+      remoteSessionId: undefined,
+    }),
+  );
+});

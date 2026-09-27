@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { CodeCommentAnnotation, CommentDraft } from "@/components/ui/code-viewer.js";
 import type { DiffViewerSelectedLineRange } from "@/components/ui/diff-viewer.js";
 import {
+  getDiffCommentDraftScopeKey,
   getDiffCommentSelectedText,
   normalizeDiffCommentRange,
   toCodeCommentSide,
@@ -41,6 +42,9 @@ function isDiffCommentAnnotationMetadata(value: unknown): value is DiffCommentAn
 export interface GitPaneDiffCommentTarget {
   workspacePath: string;
   workspaceIdentity?: string;
+  remoteSessionId?: string;
+  /** 变更来源（unstaged / staged / branch …）：同一文件在不同来源下是不同的 diff。 */
+  sourceId: string;
   /** 文件绝对路径，与文件预览的评论分桶一致。 */
   sourcePath: string;
   /** 新侧是否就是工作区文件（unstaged 来源）；只有这时才与文件预览共享行内评论。 */
@@ -67,14 +71,14 @@ export function useGitPaneDiffComments(target: GitPaneDiffCommentTarget | null):
   const [draftText, setDraftText] = useState("");
   const targetRef = useRef(target);
   targetRef.current = target;
+  // 修复原因：卡片折叠后草稿状态仍保留，重新展开会出现旧草稿；切换到路径相同的另一个 workspace 时卡片被复用，
+  // 旧草稿也会留下。修复依据：草稿属于 workspace、来源与文件，范围变化（包括变为不可评论）时清空。
   const enabled = target !== null;
-  // 修复原因：卡片折叠后草稿状态仍保留，重新展开会出现旧草稿。修复依据：target 为空（折叠/不可评论）时清空。
+  const draftScopeKey = getDiffCommentDraftScopeKey(target);
   useEffect(() => {
-    if (!enabled) {
-      setDraft(null);
-      setDraftText("");
-    }
-  }, [enabled]);
+    setDraft(null);
+    setDraftText("");
+  }, [draftScopeKey]);
   const bucket = target?.sharesWorkingTree
     ? {
         workspacePath: target.workspacePath,
