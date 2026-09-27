@@ -923,6 +923,9 @@ const zhCN: Record<string, string> = {
   "git.worktree.delete.ignoredTitle": "这个 worktree 有被 Git 忽略的文件",
   "git.worktree.delete.ignoredDescription":
     "本地配置、安装的依赖等文件不在 Git 中，删除 worktree 会将它们永久删除。仍要删除吗？",
+  "git.worktree.delete.unknownStatusTitle": "无法确认这个 worktree 中的内容",
+  "git.worktree.delete.unknownStatusDescription":
+    "ZCode 无法读取这个 worktree 的状态。删除后其中未提交的改动以及被 Git 忽略的文件（如本地配置、安装的依赖）可能永久丢失。仍要删除吗？",
   "git.worktree.delete.forceConfirm": "仍然删除",
   "git.worktree.delete.done": "已删除 worktree，分支 {branchName} 已保留。",
   "git.worktree.delete.failed": "无法删除 worktree：{error}",

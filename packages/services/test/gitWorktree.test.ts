@@ -426,3 +426,54 @@ test("a live worktree is never treated as a leftover", async () => {
     assert.ok(await exists(created.worktreePath));
   });
 });
+
+test("an unreadable worktree status needs consent for both changes and ignored files", async () => {
+  const { createGitCommandProvider } = await import("../src/git/providers/gitCommandProvider.js");
+  const { readManagedWorktree, removeManagedWorktree } =
+    await import("../src/git/repo/gitWorktree.js");
+  await withRepo(async (repo, worktreesRootDir) => {
+    const created = await createGitCliRepo({ worktreesRootDir }).createWorktree(repo, "unreadable");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    await writeFile(join(created.worktreePath, ".gitignore"), ".env\n");
+    await writeFile(join(created.worktreePath, ".env"), "SECRET=1\n");
+    const real = createGitCommandProvider();
+    // status 失败（退出码非 0）或输出超限（进程被结束前已退出为 0）
+    const withStatus = (override: { exitCode: number | null; outputTruncated: boolean }) => ({
+      resolveGitBinary: () => real.resolveGitBinary(),
+      async run(options: Parameters<typeof real.run>[0]) {
+        const result = await real.run(options);
+        return options.args[0] === "status" ? { ...result, ...override, stdout: "" } : result;
+      },
+    });
+    for (const override of [
+      { exitCode: 128, outputTruncated: false },
+      { exitCode: 0, outputTruncated: true },
+    ]) {
+      const commandProvider = withStatus(override);
+      const worktree = await readManagedWorktree({
+        commandProvider,
+        worktreeRoot: created.worktreePath,
+        worktreesRootDir,
+      });
+      assert.ok(worktree);
+      assert.equal(worktree.statusUnknown, true);
+      assert.equal(worktree.hasUncommittedChanges, true);
+      assert.equal(worktree.hasIgnoredFiles, true);
+      // 只同意丢弃改动：不能带 --force 删掉未提示过的被忽略文件
+      assert.deepEqual(await removeManagedWorktree({ commandProvider, worktree, force: true }), {
+        ok: false,
+        reason: "dirty",
+      });
+      assert.ok(await exists(join(created.worktreePath, ".env")));
+    }
+    // 读取正常时不标出 statusUnknown
+    const readable = await readManagedWorktree({
+      commandProvider: real,
+      worktreeRoot: created.worktreePath,
+      worktreesRootDir,
+    });
+    assert.equal(readable?.statusUnknown, undefined);
+    assert.equal(readable?.hasIgnoredFiles, true);
+  });
+});

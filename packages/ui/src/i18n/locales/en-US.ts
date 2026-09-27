@@ -994,6 +994,9 @@ const enUS: Record<string, string> = {
   "git.worktree.delete.ignoredTitle": "This worktree has files Git ignores",
   "git.worktree.delete.ignoredDescription":
     "Files such as local settings or installed dependencies aren't in Git. Deleting the worktree deletes them permanently. Delete it anyway?",
+  "git.worktree.delete.unknownStatusTitle": "Couldn't check what this worktree contains",
+  "git.worktree.delete.unknownStatusDescription":
+    "ZCode couldn't read this worktree's status. Deleting it may permanently discard uncommitted changes and files Git ignores, such as local settings or installed dependencies. Delete it anyway?",
   "git.worktree.delete.forceConfirm": "Delete anyway",
   "git.worktree.delete.done": "Worktree deleted. The branch {branchName} is kept.",
   "git.worktree.delete.failed": "Couldn't delete the worktree: {error}",

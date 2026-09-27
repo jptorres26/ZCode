@@ -222,6 +222,8 @@ export interface GitManagedWorktree {
   hasUncommittedChanges: boolean;
   /** 读取时的状态：有被 Git 忽略的文件（如本地配置、安装的依赖），删除 worktree 会一并永久删除。 */
   hasIgnoredFiles: boolean;
+  /** 读不出状态（status 失败、超时或输出超限）：上面两项都按存在处理，确认文案说明无法确认其中内容。 */
+  statusUnknown?: boolean;
   /** 该 worktree 目录的身份（设备号、inode 与创建时间）：确认之后据此确认仍是同一个 worktree。 */
   instanceId: string;
 }

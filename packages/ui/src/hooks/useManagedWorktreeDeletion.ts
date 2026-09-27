@@ -104,6 +104,7 @@ export function useManagedWorktreeDeletion(options: {
     }
     let hasChanges: boolean;
     let hasIgnoredFiles: boolean;
+    let statusUnknown: boolean;
     let instanceId: string;
     try {
       // 所有确认都在释放 runtime 之前完成：按删除前一刻的状态决定是否需要“丢弃改动”确认。
@@ -126,6 +127,7 @@ export function useManagedWorktreeDeletion(options: {
       }
       hasChanges = current.hasUncommittedChanges;
       hasIgnoredFiles = current.hasIgnoredFiles;
+      statusUnknown = current.statusUnknown === true;
       instanceId = current.instanceId;
     } catch (error: unknown) {
       logger.warn("[WorktreeDeletion] 读取 worktree 状态失败", {
@@ -143,14 +145,20 @@ export function useManagedWorktreeDeletion(options: {
       (hasChanges || hasIgnoredFiles) &&
       !(await confirmDialog({
         title: intl.formatMessage({
-          id: hasChanges ? "git.worktree.delete.dirtyTitle" : "git.worktree.delete.ignoredTitle",
+          id: statusUnknown
+            ? "git.worktree.delete.unknownStatusTitle"
+            : hasChanges
+              ? "git.worktree.delete.dirtyTitle"
+              : "git.worktree.delete.ignoredTitle",
         }),
         description: intl.formatMessage({
-          id: !hasChanges
-            ? "git.worktree.delete.ignoredDescription"
-            : hasIgnoredFiles
-              ? "git.worktree.delete.dirtyWithIgnoredDescription"
-              : "git.worktree.delete.dirtyDescription",
+          id: statusUnknown
+            ? "git.worktree.delete.unknownStatusDescription"
+            : !hasChanges
+              ? "git.worktree.delete.ignoredDescription"
+              : hasIgnoredFiles
+                ? "git.worktree.delete.dirtyWithIgnoredDescription"
+                : "git.worktree.delete.dirtyDescription",
         }),
         confirmLabel: intl.formatMessage({ id: "git.worktree.delete.forceConfirm" }),
         cancelLabel: intl.formatMessage({ id: "common.cancel" }),

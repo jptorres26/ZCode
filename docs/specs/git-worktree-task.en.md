@@ -73,9 +73,12 @@ branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }` when those con
   `null` (`instanceId` is the worktree folder's device, inode and birth time)
   (the main checkout and branch come from `git worktree list --porcelain`; it runs
   `git status --porcelain --untracked-files=normal --ignored`: `hasUncommittedChanges` says whether
-  there were changes, including untracked files, and counts as true if that read fails;
-  `hasIgnoredFiles` says whether there were files Git ignores (`!! ` entries such as `.env` or installed
-  dependencies), which are deleted with the worktree).
+  there were changes, including untracked files; `hasIgnoredFiles` says whether there were files Git
+  ignores (`!! ` entries such as `.env` or installed dependencies), which are deleted with the worktree.
+  When the status read fails (non-zero exit, timeout or output over the limit), the two kinds can't be
+  told apart, so both count as present and it returns `statusUnknown: true`. Counting only changes
+  would let a user agree to lose just the changes, and a removal whose read fails the same way would
+  then pass `--force` and delete ignored files that were never mentioned).
 - `IGitService.removeWorktree({ workspacePath, force? })`:
   - Conditions not met → `{ ok: false, reason: "not-managed" }`.
   - The request carries `force` (the user agreed to lose uncommitted changes), `discardIgnored` (agreed
@@ -139,7 +142,9 @@ branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }` when those con
      ignores get the same kind of confirmation (it says local settings, installed dependencies and so on
      are deleted for good; with uncommitted changes too, it is one combined confirmation). A
      confirmation covers only what existed then: uncommitted changes map to `force` and ignored files to
-     `discardIgnored`, so the other kind appearing later returns `dirty`. The `instanceId` of this read
+     `discardIgnored`, so the other kind appearing later returns `dirty`. With `statusUnknown`, the
+     confirmation says the contents couldn't be read and that uncommitted changes and ignored files may
+     both be lost for good, and confirming passes both `force` and `discardIgnored`. The `instanceId` of this read
      must match the one from when the menu opened; otherwise it says the worktree is no longer the one
      confirmed and stops. **Every
      confirmation happens before anything is released**, so cancelling at any step has no effect.
