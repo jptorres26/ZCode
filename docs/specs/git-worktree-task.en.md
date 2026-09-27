@@ -79,16 +79,23 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   - Runs `git worktree remove [--force] <worktreePath>` in the main checkout. On failure it checks the
     registration again: still registered → `{ ok: false, reason: "failed", detail }`; registration gone
     (when deleting the folder fails midway, git may already have removed the admin folder, typically
-    because of a Windows folder lock) → `{ ok: false, reason: "leftover", detail }`.
+    because of a Windows folder lock) → `{ ok: false, reason: "leftover", leftoverId, detail }`, where
+    `leftoverId` is the folder's device, inode and birth time at that moment (not following links). If
+    the registration and the folder are both gone, that counts as success.
   - Success → `{ ok: true, mainWorktreePath, branchName }`. **The branch and its commits are kept**;
     only the folder and the worktree registration are removed.
-- `IGitService.removeWorktreeLeftover({ worktreePath })` cleans up what a `leftover` left behind. It only
-  deletes a folder exactly at `<ZCode data dir>/worktrees/<repo folder>/<worktree folder>` that is no
-  longer a live Git checkout (no `.git`, or a `.git` file pointing at an admin folder that no longer
-  exists); anything else returns `not-leftover`. A folder that no longer exists counts as success.
+- `IGitService.removeWorktreeLeftover({ worktreePath, leftoverId })` cleans up what a `leftover` left
+  behind. It only deletes a folder exactly at `<ZCode data dir>/worktrees/<repo folder>/<worktree folder>`
+  that is no longer a live Git checkout (no `.git`, or a `.git` file pointing at an admin folder that no
+  longer exists) and is still the folder from the failure (the path itself is a directory, not a link,
+  and its identity matches `leftoverId`); anything else returns `not-leftover`. A folder that no longer
+  exists counts as success. A retry can be clicked long after the failure, and by then the path may
+  have been replaced by a new folder or a link.
 - `ITerminalService.disposeUnderPath({ path })` ends every terminal whose starting cwd is that folder or
-  inside it, and resolves once their processes have exited (with a 5-second cap that only keeps the
-  delete flow from hanging). The terminal service owns every PTY, covering the side pane and the bottom
+  inside it, and resolves once their processes have exited (with a 5-second cap). If any terminal hasn't
+  exited within the cap it **rejects** (`Terminals in the folder did not exit in time`) and the caller
+  deletes nothing; a terminal that was killed but hasn't exited stays registered until it does, and the
+  next `disposeUnderPath` kills it again and waits for it. The terminal service owns every PTY, covering the side pane and the bottom
   terminal. A terminal still inside `create()` is registered before its first await; once marked
   cancelled it ends as soon as it starts and `create()` rejects, and `disposeUnderPath` waits for that
   too. `disposeUnderPath` also blocks the folder (before any await): a later `create()` whose requested,
@@ -130,13 +137,18 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   4. It calls `disposeUnderPath(worktreePath)` and **waits for the terminals to exit**, then does the
      same cleanup as "Remove" (close the tab, release the runtime, invalidate the task cache) and
      **waits for the runtime release to finish**. The delete flow skips the Windows reserved-name scan:
-     the folder is about to go, and scanning it would hold it open during deletion. If the request to
-     end the terminals fails, or the runtime release fails (`releaseWorkspacePreparation` rejects, for
+     the folder is about to go, and scanning it would hold it open during deletion. If ending the
+     terminals fails (the request fails or a terminal doesn't exit within the cap), or the runtime
+     release fails (`releaseWorkspacePreparation` rejects, for
      example because IPC or the Host went away), **nothing is deleted**: a toast says the tasks and
      terminals couldn't be stopped and that the folder and the branch are kept, and offers "Retry".
      When ending the terminals fails, the entry isn't closed (on the first attempt the sidebar row is
      still there). Plain "Remove" ignores the release result.
-  5. Only then does it call `removeWorktree` (or `removeWorktreeLeftover` when retrying a leftover).
+  5. Once the release is done it **checks for other entries again** (ending terminals and releasing can
+     take seconds, and an entry opened meanwhile isn't seen by the check at the start of the attempt;
+     the terminal block doesn't stop a new entry's runtime from starting); if there are any, it shows
+     the hint and deletes nothing. Only then does it call `removeWorktree` (or
+     `removeWorktreeLeftover` with the `leftoverId` when retrying a leftover).
      Release comes first because on Windows an Agent or terminal process whose cwd is inside the folder
      locks it, so removing first fails or deletes only some of the files.
   6. Outcomes (except when ending the terminals failed, the sidebar row has unmounted by now, so
@@ -145,7 +157,8 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
      - `dirty` (changes appeared after the confirmation, which the user didn't agree to discard): says
        nothing was deleted and offers "Delete anyway", which makes a new attempt with `force`.
      - `leftover`: says the folder couldn't be fully deleted and the branch is kept; the removal step
-       of "Retry" is `removeWorktreeLeftover`.
+       of "Retry" is `removeWorktreeLeftover`. If that returns `not-leftover` (the folder changed), it
+       says nothing was deleted and offers no further retry.
      - Any other failure (git deleted nothing, for example a locked worktree): says the folder and the
        branch are both kept; "Retry" makes a new attempt with `removeWorktree`.
   - Logs record only the failure kind, not git's error text, which contains paths. The full text is

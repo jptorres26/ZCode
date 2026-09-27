@@ -333,7 +333,7 @@ export function createGitService(options?: {
     },
 
     async removeWorktreeLeftover(params) {
-      return await repo.removeWorktreeLeftover(params.worktreePath);
+      return await repo.removeWorktreeLeftover(params.worktreePath, params.leftoverId);
     },
 
     async getIdentity(params) {

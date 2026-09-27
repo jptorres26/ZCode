@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -270,32 +280,89 @@ test("a removal that fails after git dropped the registration reports a leftover
       worktree,
       force: true,
     });
-    assert.deepEqual(result, { ok: false, reason: "leftover", detail: "error: failed to delete" });
+    assert.equal(result.ok, false);
+    if (result.ok || result.reason !== "leftover") throw new Error("expected a leftover");
+    assert.equal(result.detail, "error: failed to delete");
+    const { leftoverId } = result;
+    assert.match(leftoverId, /^\d+:\d+:\d+$/);
     assert.ok(await exists(created.worktreePath));
 
     // 只清理 ZCode worktrees 目录下第二层、且已失效的检出
+    const containerDir = getWorktreeContainerDir(worktreesRootDir, repo);
+    const idOf = async (path: string) => {
+      const stats = await lstat(path, { bigint: true });
+      return `${stats.dev}:${stats.ino}:${stats.birthtimeNs}`;
+    };
     assert.deepEqual(
       await removeLeftoverWorktreeDir({
-        worktreePath: getWorktreeContainerDir(worktreesRootDir, repo),
+        worktreePath: containerDir,
+        leftoverId: await idOf(containerDir),
         worktreesRootDir,
       }),
       { ok: false, reason: "not-leftover" },
     );
-    assert.deepEqual(await removeLeftoverWorktreeDir({ worktreePath: repo, worktreesRootDir }), {
-      ok: false,
-      reason: "not-leftover",
-    });
     assert.deepEqual(
-      await removeLeftoverWorktreeDir({ worktreePath: created.worktreePath, worktreesRootDir }),
+      await removeLeftoverWorktreeDir({
+        worktreePath: repo,
+        leftoverId: await idOf(repo),
+        worktreesRootDir,
+      }),
+      { ok: false, reason: "not-leftover" },
+    );
+    // 目录身份与失败时不同（另一个目录的 id）：不删除
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({
+        worktreePath: created.worktreePath,
+        leftoverId: await idOf(repo),
+        worktreesRootDir,
+      }),
+      { ok: false, reason: "not-leftover" },
+    );
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({
+        worktreePath: created.worktreePath,
+        leftoverId,
+        worktreesRootDir,
+      }),
       { ok: true },
     );
     assert.equal(await exists(created.worktreePath), false);
     assert.equal(await git(repo, "branch", "--list", "locked"), "locked");
     // 已不存在时重复清理也算成功
     assert.deepEqual(
-      await removeLeftoverWorktreeDir({ worktreePath: created.worktreePath, worktreesRootDir }),
+      await removeLeftoverWorktreeDir({
+        worktreePath: created.worktreePath,
+        leftoverId,
+        worktreesRootDir,
+      }),
       { ok: true },
     );
+
+    // 失败提示等待期间，该路径被换成新目录或指向另一个第二层目录的链接：都不删除
+    await mkdir(created.worktreePath);
+    await writeFile(join(created.worktreePath, "keep.txt"), "user data\n");
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({
+        worktreePath: created.worktreePath,
+        leftoverId,
+        worktreesRootDir,
+      }),
+      { ok: false, reason: "not-leftover" },
+    );
+    assert.ok(await exists(join(created.worktreePath, "keep.txt")));
+    await rm(created.worktreePath, { recursive: true });
+    const sibling = join(containerDir, "other-dir");
+    await mkdir(sibling);
+    await symlink(sibling, created.worktreePath);
+    assert.deepEqual(
+      await removeLeftoverWorktreeDir({
+        worktreePath: created.worktreePath,
+        leftoverId: await idOf(sibling),
+        worktreesRootDir,
+      }),
+      { ok: false, reason: "not-leftover" },
+    );
+    assert.ok(await exists(sibling));
   });
 });
 
@@ -305,8 +372,13 @@ test("a live worktree is never treated as a leftover", async () => {
     const created = await createGitCliRepo({ worktreesRootDir }).createWorktree(repo, "live");
     assert.equal(created.ok, true);
     if (!created.ok) return;
+    const stats = await lstat(created.worktreePath, { bigint: true });
     assert.deepEqual(
-      await removeLeftoverWorktreeDir({ worktreePath: created.worktreePath, worktreesRootDir }),
+      await removeLeftoverWorktreeDir({
+        worktreePath: created.worktreePath,
+        leftoverId: `${stats.dev}:${stats.ino}:${stats.birthtimeNs}`,
+        worktreesRootDir,
+      }),
       { ok: false, reason: "not-leftover" },
     );
     assert.ok(await exists(created.worktreePath));

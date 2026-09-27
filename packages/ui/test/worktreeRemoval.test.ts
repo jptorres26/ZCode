@@ -16,7 +16,7 @@ interface State {
   disposeFails: boolean;
   released: boolean;
   removeResults: GitRemoveWorktreeResult[];
-  leftoverOk: boolean;
+  leftoverResult: "ok" | "failed" | "not-leftover";
 }
 
 function createHarness(initial: Partial<State> = {}): Harness {
@@ -25,7 +25,7 @@ function createHarness(initial: Partial<State> = {}): Harness {
     disposeFails: false,
     released: true,
     removeResults: [{ ok: true }],
-    leftoverOk: true,
+    leftoverResult: "ok",
     ...initial,
   };
   const calls: string[] = [];
@@ -36,9 +36,12 @@ function createHarness(initial: Partial<State> = {}): Harness {
         calls.push(`remove(force=${String(force)})`);
         return state.removeResults.shift() ?? { ok: true };
       },
-      removeWorktreeLeftover: async () => {
-        calls.push("removeLeftover");
-        return state.leftoverOk ? { ok: true } : { ok: false, reason: "failed", detail: "busy" };
+      removeWorktreeLeftover: async ({ leftoverId }) => {
+        calls.push(`removeLeftover(${leftoverId})`);
+        if (state.leftoverResult === "ok") return { ok: true };
+        return state.leftoverResult === "failed"
+          ? { ok: false, reason: "failed", detail: "busy" }
+          : { ok: false, reason: "not-leftover" };
       },
     },
     terminalService: {
@@ -85,6 +88,7 @@ test("terminals end, the runtime is released, then the worktree is removed and u
     "check",
     "dispose",
     "release(scan=false)",
+    "check",
     "remove(force=false)",
     "unblock",
   ]);
@@ -107,6 +111,7 @@ test("nothing is removed when the runtime release fails, and Retry runs every st
     "check",
     "dispose",
     "release(scan=false)",
+    "check",
     "remove(force=false)",
     "unblock",
   ]);
@@ -136,9 +141,9 @@ test("failed, leftover and dirty retries end terminals and release again before 
   const harness = createHarness({
     removeResults: [
       { ok: false, reason: "failed", detail: "locked" },
-      { ok: false, reason: "leftover", detail: "busy" },
+      { ok: false, reason: "leftover", leftoverId: "1:2:3", detail: "busy" },
     ],
-    leftoverOk: false,
+    leftoverResult: "failed",
   });
   await removeManagedWorktree(harness.params);
   harness.calls.length = 0;
@@ -147,6 +152,7 @@ test("failed, leftover and dirty retries end terminals and release again before 
     "check",
     "dispose",
     "release(scan=false)",
+    "check",
     "remove(force=false)",
     "unblock",
   ]);
@@ -158,7 +164,8 @@ test("failed, leftover and dirty retries end terminals and release again before 
     "check",
     "dispose",
     "release(scan=false)",
-    "removeLeftover",
+    "check",
+    "removeLeftover(1:2:3)",
     "unblock",
   ]);
 
@@ -171,7 +178,31 @@ test("failed, leftover and dirty retries end terminals and release again before 
     "check",
     "dispose",
     "release(scan=false)",
+    "check",
     "remove(force=true)",
     "unblock",
   ]);
+});
+
+test("a project opened while the release was running stops the removal", async () => {
+  const harness = createHarness();
+  const answers = [false, true];
+  harness.params.refuseIfOtherEntriesOpen = async () => {
+    harness.calls.push("check");
+    return answers.shift() ?? true;
+  };
+  await removeManagedWorktree(harness.params);
+  assert.deepEqual(harness.calls, ["check", "dispose", "release(scan=false)", "check", "unblock"]);
+});
+
+test("a leftover folder that changed since the failure is not removed and offers no retry", async () => {
+  const harness = createHarness({
+    removeResults: [{ ok: false, reason: "leftover", leftoverId: "1:2:3", detail: "busy" }],
+    leftoverResult: "not-leftover",
+  });
+  await removeManagedWorktree(harness.params);
+  await clickLastToastAction(harness);
+  const last = harness.toasts.at(-1);
+  assert.equal(last?.message, "git.worktree.delete.leftoverChanged");
+  assert.equal(last?.options?.onAction, undefined);
 });

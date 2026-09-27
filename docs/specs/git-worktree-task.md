@@ -60,14 +60,18 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   - 未指定 `force` 且有未提交改动 → `{ ok: false, reason: "dirty" }`，不删除；
   - 在主检出中执行 `git worktree remove [--force] <worktreePath>`；失败时再查登记：仍登记 →
     `{ ok: false, reason: "failed", detail }`；登记已消失（目录删除中途失败时 git 可能已删掉管理目录，常见于 Windows
-    目录占用）→ `{ ok: false, reason: "leftover", detail }`；
+    目录占用）→ `{ ok: false, reason: "leftover", leftoverId, detail }`，`leftoverId` 为此时该目录（不跟随链接）的
+    设备号、inode 与创建时间；登记与目录都已不在时视为成功；
   - 成功 → `{ ok: true, mainWorktreePath, branchName }`。**分支与其提交保留**，只删除目录与 worktree 登记。
-- `IGitService.removeWorktreeLeftover({ worktreePath })`：清理 `leftover` 剩下的目录。只允许删除
-  `<ZCode 数据目录>/worktrees/<仓库目录>/<worktree 目录>` 这一层、且已不是有效 Git 检出（没有 `.git`，或 `.git` 文件
-  指向的管理目录已不存在）的目录，否则返回 `not-leftover`；目录已不存在视为成功。
+- `IGitService.removeWorktreeLeftover({ worktreePath, leftoverId })`：清理 `leftover` 剩下的目录。只允许删除
+  `<ZCode 数据目录>/worktrees/<仓库目录>/<worktree 目录>` 这一层、已不是有效 Git 检出（没有 `.git`，或 `.git` 文件
+  指向的管理目录已不存在）、且仍是失败时那个目录（路径本身是目录而不是链接，身份与 `leftoverId` 一致）的目录，
+  否则返回 `not-leftover`；目录已不存在视为成功。重试可能在很久之后才点击，期间该路径可能被换成新目录或链接。
 - `ITerminalService.disposeUnderPath({ path })`：结束所有初始 cwd 位于该目录（含自身）下的终端，并在进程退出后 resolve
-  （等待上限 5 秒，只防止删除流程无限挂起）。仍在 `create()` 中的终端在第一个 await 前即登记：被标记取消后，
-  启动即结束并以错误返回，`disposeUnderPath` 同样等待它结束。`disposeUnderPath` 还会（在任何 await 之前）封锁该目录：
+  （等待上限 5 秒）。任一终端在上限内未退出时 **reject**（`Terminals in the folder did not exit in time`），
+  调用方不删除目录；已发出 kill 但尚未退出的终端会一直登记到退出，下一次 `disposeUnderPath` 会再次结束并等待它们。
+  仍在 `create()` 中的终端在第一个 await 前即登记：被标记取消后，启动即结束并以错误返回，`disposeUnderPath` 同样
+  等待它结束。`disposeUnderPath` 还会（在任何 await 之前）封锁该目录：
   此后请求、解析或真实 cwd（经符号链接到达同一目录也算）位于其下的新 `create()` 被拒绝，直到调用
   `ITerminalService.releasePathBlock({ path })`；删除流程在删除尝试结束（成功或失败）后解除封锁。封锁记录该目录的
   设备号、inode 与创建时间：界面重载或崩溃导致未解除时，一旦该目录已不存在或已是同路径上新建的另一个目录，封锁即失效，
@@ -90,15 +94,18 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
      它们再删除。
   4. 调用 `disposeUnderPath(worktreePath)` 并**等待终端退出**；再执行与“移除”相同的收尾（关闭标签；释放运行时；
      失效任务缓存），并**等待运行时释放完成**。删除流程不做 Windows 保留名扫描（目录即将删除，扫描还会在删除时占用目录）。
-     结束终端的请求失败或运行时释放失败（`releaseWorkspacePreparation` 拒绝，如 IPC 或 Host 中断）时**不删除**：
+     结束终端失败（请求失败或终端在上限内未退出）或运行时释放失败（`releaseWorkspacePreparation` 拒绝，如 IPC 或 Host 中断）时**不删除**：
      提示未能停止任务和终端、目录与分支均已保留，并提供“重试”。结束终端失败时不关闭入口（首次尝试时侧栏行仍在）。
      普通“移除”不关心释放结果。
-  5. 再调用 `removeWorktree`（清理剩余目录的重试调用 `removeWorktreeLeftover`）。先释放后删除：Windows 上以该目录为
+  5. 释放完成后**再检查一次其它入口**（结束终端与释放可能要等几秒，期间新打开的入口在尝试开始时的检查中看不到；
+     终端封锁不阻止新入口的 runtime 启动），仍有则提示并不删除。再调用 `removeWorktree`（清理剩余目录的重试调用
+     `removeWorktreeLeftover`，带上 `leftoverId`）。先释放后删除：Windows 上以该目录为
      cwd 的 Agent/终端进程会占用目录，先删除会失败，甚至只删掉一部分文件。
   6. 结果（除结束终端失败外，侧栏行此时已卸载；后续确认与重试都通过 toast 操作完成，由用户触发，不做定时重试）：
      - 成功：提示分支已保留；
      - `dirty`（确认之后又出现了改动，用户没有同意丢弃）：提示未删除，提供“仍然删除”（以 `force` 重新尝试）；
-     - `leftover`：提示目录未能完全删除、分支已保留，“重试”的删除步骤改为 `removeWorktreeLeftover`；
+     - `leftover`：提示目录未能完全删除、分支已保留，“重试”的删除步骤改为 `removeWorktreeLeftover`；清理返回
+       `not-leftover`（目录已变化）时提示未删除，不再提供重试；
      - 其它失败（git 未删除任何内容，如 worktree 被锁定）：提示目录与分支都已保留，“重试”重新尝试 `removeWorktree`。
   - 日志只记录失败类别，不记录 git 的错误信息（其中含路径）；完整信息只在提示中展示。
 

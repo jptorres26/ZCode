@@ -30,8 +30,10 @@ export interface WorktreeRemovalParams {
   force: boolean;
 }
 
-/** 删除步骤：删除 worktree，或清理 git 已撤销登记后的剩余目录。 */
-type RemovalStep = "worktree" | "leftover";
+/** 删除步骤：删除 worktree，或清理 git 已撤销登记后的剩余目录（带失败时记录的目录身份）。 */
+type RemovalStep = { kind: "worktree" } | { kind: "leftover"; leftoverId: string };
+
+const REMOVE_WORKTREE: RemovalStep = { kind: "worktree" };
 
 const FAILURE_MESSAGE_IDS = {
   failed: "git.worktree.delete.failedAfterRelease",
@@ -51,7 +53,7 @@ const FAILURE_MESSAGE_IDS = {
  */
 export async function removeManagedWorktree(
   params: WorktreeRemovalParams,
-  step: RemovalStep = "worktree",
+  step: RemovalStep = REMOVE_WORKTREE,
 ): Promise<void> {
   const { terminalService, worktreePath } = params;
   if (await params.refuseIfOtherEntriesOpen()) {
@@ -71,7 +73,14 @@ export async function removeManagedWorktree(
       reportFailure(params, "release", "", () => removeManagedWorktree(params, step));
       return;
     }
-    await (step === "leftover" ? removeLeftover(params) : removeWorktree(params));
+    // 修复原因：其它入口只在尝试开始时检查；结束终端与释放 runtime 可能要等几秒，期间新打开的入口不会被发现，
+    // 删除会删掉它正在使用的检出。修复依据：释放完成后、删除前再检查一次（终端封锁不阻止新入口的 runtime 启动）。
+    if (await params.refuseIfOtherEntriesOpen()) {
+      return;
+    }
+    await (step.kind === "leftover"
+      ? removeLeftover(params, step.leftoverId)
+      : removeWorktree(params));
   } finally {
     // 删除尝试结束（成功或失败）后解除新建终端封锁；之后的重试会重新封锁。
     void terminalService.releasePathBlock({ path: worktreePath }).catch(() => undefined);
@@ -116,8 +125,9 @@ async function removeWorktree(params: WorktreeRemovalParams): Promise<void> {
     return;
   }
   if (result.reason === "leftover") {
+    const step: RemovalStep = { kind: "leftover", leftoverId: result.leftoverId };
     reportFailure(params, "leftover", result.detail ?? result.reason, () =>
-      removeManagedWorktree(params, "leftover"),
+      removeManagedWorktree(params, step),
     );
     return;
   }
@@ -126,10 +136,10 @@ async function removeWorktree(params: WorktreeRemovalParams): Promise<void> {
   );
 }
 
-async function removeLeftover(params: WorktreeRemovalParams): Promise<void> {
+async function removeLeftover(params: WorktreeRemovalParams, leftoverId: string): Promise<void> {
   const { gitService, worktreePath, intl } = params;
   const result = await gitService
-    .removeWorktreeLeftover({ worktreePath })
+    .removeWorktreeLeftover({ worktreePath, leftoverId })
     .catch((error: unknown) => ({
       ok: false as const,
       reason: "failed" as const,
@@ -141,8 +151,20 @@ async function removeLeftover(params: WorktreeRemovalParams): Promise<void> {
     );
     return;
   }
+  if (result.reason === "not-leftover") {
+    // 该路径已不是失败时的那个目录（被替换或换成链接）：不再删除，也不提供重试。
+    logger.warn("[WorktreeDeletion] 剩余目录已变化，未清理");
+    params.notify(
+      intl.formatMessage(
+        { id: "git.worktree.delete.leftoverChanged" },
+        { path: worktreePath, branchName: params.branchName },
+      ),
+      { variant: "warning", durationMs: 15_000 },
+    );
+    return;
+  }
   reportFailure(params, "leftover", result.detail ?? result.reason, () =>
-    removeManagedWorktree(params, "leftover"),
+    removeManagedWorktree(params, { kind: "leftover", leftoverId }),
   );
 }
 
