@@ -28,7 +28,8 @@ token is needed, and no credentials are stored on the client.
    branch is the local branch name, since `push.default` simple/current/matching push the same name
    there. The link points at the repository that was pushed to, and the host's page picks the target
    repository.
-3. Remote address: `git remote get-url <remote>` (with `insteadOf` applied). Supports `https://`,
+3. Remote address: `git remote get-url --push <remote>`, the address pushed to (`remote.<name>.pushurl`
+   when set, otherwise the fetch URL; with `insteadOf` / `pushInsteadOf` applied). Supports `https://`,
    `http://`, `ssh://`, `git://`, and the scp form `user@host:owner/repo.git`. The web address
    always drops user names, passwords, and tokens; ssh / git / scp forms become `https://host/...`
    and drop the ssh port. In those forms the host may be an ssh alias: aliases like `github.com-work`

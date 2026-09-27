@@ -23,7 +23,8 @@ Codex desktop 在推送后可以直接发起 PR。ZCode 只有提交与推送，
    `branch.<name>.remote`；没有或为 `.` 时返回 `null`。推送到上游所在的远程时，源分支为 `branch.<name>.merge`
    （去掉 `refs/heads/` 前缀，不是分支引用时返回 `null`）；推送到其它远程（如 fork）时，源分支为本地分支名
    （`push.default` 为 simple/current/matching 时推送同名分支）。链接指向推送到的仓库，托管平台在其页面上选择目标仓库。
-3. 远程地址：`git remote get-url <remote>`（已应用 `insteadOf`）。支持 `https://`、`http://`、`ssh://`、
+3. 远程地址：`git remote get-url --push <remote>`（推送去的地址：配置了 `remote.<name>.pushurl` 时为它，否则为
+   fetch 地址；已应用 `insteadOf` / `pushInsteadOf`）。支持 `https://`、`http://`、`ssh://`、
    `git://` 与 scp 形式 `user@host:owner/repo.git`。网页地址一律去掉用户名、密码与令牌；
    ssh / git / scp 形式转为 `https://host/...` 并丢弃 ssh 端口；这些形式的主机可能是 ssh 别名：
    `github.com-work` 这类“已知平台主机-后缀”还原为规范主机，不含点的裸别名无法推断网页主机，返回 `null`；http(s) 保留原端口与协议。

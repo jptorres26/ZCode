@@ -47,8 +47,10 @@ export async function readGitPullRequestLink(context: {
     headBranch = context.branchName;
   }
 
+  // 修复原因：远程配置了单独的 remote.<name>.pushurl（从上游拉取、推送到 fork）时，推送去的是 push URL，
+  // 读 fetch URL 会把链接建到错误的仓库。修复依据：读取 push URL（未配置时 git 回退为 fetch URL）。
   const [remoteUrl, remoteHead] = await Promise.all([
-    readTrimmed(["remote", "get-url", remoteName]),
+    readTrimmed(["remote", "get-url", "--push", remoteName]),
     readTrimmed(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remoteName}/HEAD`]),
   ]);
   if (!remoteUrl) {
