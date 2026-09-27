@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { access, open, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
   GitBranchMutationIssue,
@@ -371,6 +371,34 @@ export function parseStatusPorcelain(stdout: string): {
  */
 export function isMissingInWorkingTree(entry: Pick<GitStatusEntry, "x" | "y">): boolean {
   return entry.y === "D" || (entry.x === "D" && (entry.y === null || entry.y === "."));
+}
+
+/**
+ * 分支对比中本地工作区已不存在的路径：status 中已删除的路径，以及本地重命名的原路径。
+ * 修复原因：本地 `git mv old new` 后，status 条目的 path 是 new、originalPath 是 old，只按 path 标记时，
+ * 分支对比里 old 的条目仍可“打开文件”，预览一个已不存在的路径。
+ * 修复依据：候选路径加入重命名（R，不含复制）的原路径，再逐一检查工作区（不跟随链接）：原路径上重新创建了内容时仍可打开。
+ */
+export async function findPathsMissingInWorkingTree(
+  repoRoot: string,
+  entries: readonly GitStatusEntry[],
+): Promise<Set<string>> {
+  const candidates = new Set<string>();
+  for (const entry of entries) {
+    if (isMissingInWorkingTree(entry)) candidates.add(entry.path);
+    if (entry.originalPath && (entry.x === "R" || entry.y === "R")) {
+      candidates.add(entry.originalPath);
+    }
+  }
+  const missing = await Promise.all(
+    [...candidates].map((path) =>
+      lstat(join(repoRoot, ...path.split("/"))).then(
+        () => null,
+        () => path,
+      ),
+    ),
+  );
+  return new Set(missing.filter((path): path is string => path !== null));
 }
 
 /** gitlink（子模块）的文件模式。 */

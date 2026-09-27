@@ -38,8 +38,8 @@ import {
   ensureGitCommandSucceeded,
   ensureRepositoryAvailable,
   fileExists,
+  findPathsMissingInWorkingTree,
   inferKindFromNumstat,
-  isMissingInWorkingTree,
   isMissingWorkingDirectoryResult,
   isNotRepositoryResult,
   normalizeInputPath,
@@ -1422,9 +1422,10 @@ export function createGitCliRepo(options?: {
       // 子模块标记只影响“打开文件”是否可用，读取失败时不影响对比结果。
       const gitlinkPaths =
         rawResult.exitCode === 0 ? parseGitlinkPaths(rawResult.stdout) : new Set<string>();
-      // “打开文件”打开工作区版本：本地已删除（未提交）的文件在工作区中不存在。
-      const missingPaths = new Set(
-        status.entries.filter((entry) => isMissingInWorkingTree(entry)).map((entry) => entry.path),
+      // “打开文件”打开工作区版本：本地已删除或重命名走（未提交）的文件在工作区中不存在。
+      const missingPaths = await findPathsMissingInWorkingTree(
+        status.resolution.repoRoot,
+        status.entries,
       );
 
       const changes = Array.from(parseNumstat(result.stdout).entries()).map(
