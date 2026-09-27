@@ -65,8 +65,10 @@ workspace is not a repository. No actions render for datasets with `readonly ===
 - `unstage(paths)`:
   - For a staged rename the original path is passed to `git restore --staged` as well, otherwise
     the deletion of the original path stays staged.
-  - When the repository has no commit yet (no HEAD) it uses `git rm --cached -r -q -- <paths>`,
-    keeping the worktree files.
+  - When the repository has no commit yet (no HEAD) it uses `git rm --cached -f -r -q -- <paths>`,
+    keeping the worktree files (`--cached` touches only the index; `-f` skips the "staged content
+    differs from both the file and the HEAD" check, without which a new file changed again after
+    staging can't be unstaged).
 - `discard(paths, staged)`:
   - Conflicted paths fail with `Cannot discard paths with unresolved conflicts.` and nothing is
     partially applied.

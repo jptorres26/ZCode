@@ -55,7 +55,8 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
   暂存与丢弃作用于链接本身，绝不作用于链接目标（否则丢弃一个指向目录的未跟踪链接会清空目标目录）。
 - `unstage(paths)`：
   - 已暂存的重命名要把原路径一并传给 `git restore --staged`，否则原路径的删除仍留在暂存区。
-  - 仓库尚无提交（HEAD 不存在）时改用 `git rm --cached -r -q -- <paths>`，保留工作区文件。
+  - 仓库尚无提交（HEAD 不存在）时改用 `git rm --cached -f -r -q -- <paths>`，保留工作区文件（`--cached` 只动 index；
+    `-f` 跳过“暂存内容与工作区、HEAD 都不同”的检查，否则暂存后又改过的新文件无法取消暂存）。
 - `discard(paths, staged)`：
   - 冲突路径直接报错 `Cannot discard paths with unresolved conflicts.`，不做部分执行。
   - 未跟踪路径用 `git clean -f -q -- <paths>` 删除；不使用 `-x`，被忽略的文件不受影响。只用一个 `-f`：嵌套的 Git 仓库

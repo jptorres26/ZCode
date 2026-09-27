@@ -242,9 +242,12 @@ export async function unstageGitPaths(context: GitPathMutationContext): Promise<
     ]);
     return;
   }
+  // 修复原因：新暂存的文件之后又改过时，`git rm --cached` 以“暂存内容与文件、HEAD 都不同”拒绝，文件仍留在暂存区。
+  // 修复依据：加 `-f` 跳过该检查；`--cached` 只从 index 移除，工作区文件不受影响。
   await runGit(context, "git rm --cached", [
     "rm",
     "--cached",
+    "-f",
     "-r",
     "-q",
     "--",
