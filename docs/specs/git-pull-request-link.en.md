@@ -47,8 +47,12 @@ token is needed, and no credentials are stored on the client.
 5. Target branch: `git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD` of the remote pushed to,
    with the remote prefix removed. That remote is the one in `--set-upstream <remote>`, or for a bare
    push the push remote git resolves for the current branch
-   (`git for-each-ref --format=%(push:remotename) refs/heads/<branch>`). When unavailable it is `null`
-   and the platform uses its default branch. When
+   (`git for-each-ref --format=%(push:remotename) refs/heads/<branch>`). It is used only when that
+   remote's fetch address (`git remote get-url <remote>`) and the address pushed to are the same
+   repository (same host and path, ignoring case): with a `pushurl` (fetching from upstream, pushing to
+   a fork), the remote HEAD is upstream's default branch, which the fork may not have. When unavailable
+   or not the same repository it is `null`, and the platform uses the pushed repository's default
+   branch. When
    the source and target branch are the same the result is `null`.
 6. URL:
    - GitHub: `/<path>/compare/<base>...<head>?expand=1` (without a base, `/compare/<head>?expand=1`);

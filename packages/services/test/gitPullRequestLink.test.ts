@@ -132,10 +132,13 @@ test("a remote with a separate push URL links to the repository pushed to", asyn
     await bare("me/demo.git");
     await git(dir, "remote", "set-url", "--push", "origin", "git@github.com:me/demo.git");
     await git(dir, "checkout", "-q", "-b", "feature/login");
-    assert.equal(
-      (await pushLink(dir))?.url,
-      "https://github.com/me/demo/compare/main...feature/login?expand=1",
-    );
+    // origin/HEAD 是上游（fetch 地址）的默认分支，不一定是 fork 的：不带目标分支，由平台用 fork 的默认分支
+    assert.deepEqual(await pushLink(dir), {
+      provider: "github",
+      url: "https://github.com/me/demo/compare/feature/login?expand=1",
+      headBranch: "feature/login",
+      baseBranch: null,
+    });
   });
 });
 

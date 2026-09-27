@@ -1,4 +1,8 @@
-import { buildGitPullRequestLink, type GitPullRequestLink } from "@zcode/shared";
+import {
+  buildGitPullRequestLink,
+  parseGitRemoteWebLocation,
+  type GitPullRequestLink,
+} from "@zcode/shared";
 import { DEFAULT_GIT_COMMAND_TIMEOUT_MS } from "../config.js";
 import type { GitCommandProvider } from "../providers/gitCommandProvider.js";
 
@@ -39,6 +43,18 @@ export function findPushedBranch(
   return null;
 }
 
+/** 两个远程地址是否指向托管平台上的同一个仓库（主机与路径不区分大小写）。 */
+function isSameRepository(fetchUrl: string | null, pushUrl: string): boolean {
+  const fetched = fetchUrl ? parseGitRemoteWebLocation(fetchUrl.split("\n")[0]!) : null;
+  const pushed = parseGitRemoteWebLocation(pushUrl);
+  return (
+    fetched !== null &&
+    pushed !== null &&
+    fetched.host.toLowerCase() === pushed.host.toLowerCase() &&
+    fetched.path.toLowerCase() === pushed.path.toLowerCase()
+  );
+}
+
 /**
  * 推送成功后，构造托管平台新建 PR 的网页链接（只读，不访问网络）。规范：docs/specs/git-pull-request-link.md
  * 修复原因：以前按仓库配置推算不带参数的 git push 会推送到哪里（pushRemote、pushDefault、push.default、pushurl），
@@ -75,13 +91,23 @@ export async function readGitPullRequestLink(context: {
       "--format=%(push:remotename)",
       `${REFS_HEADS_PREFIX}${context.branchName}`,
     ]));
-  const remoteHead = remoteName
-    ? await readTrimmed(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remoteName}/HEAD`])
-    : null;
+  const [remoteHead, fetchUrl] = remoteName
+    ? await Promise.all([
+        readTrimmed(["symbolic-ref", "--quiet", "--short", `refs/remotes/${remoteName}/HEAD`]),
+        readTrimmed(["remote", "get-url", remoteName]),
+      ])
+    : [null, null];
+  // 修复原因：远程配置了单独的 pushurl（从上游拉取、推送到 fork）时，refs/remotes/<remote>/HEAD 是上游仓库的默认分支，
+  // 以它为目标会指向 fork 中可能不存在的分支。修复依据：只有 fetch 地址与推送到的地址是同一个仓库时才取它作目标分支，
+  // 否则不带目标分支，由托管平台使用推送到的仓库的默认分支。
   const remotePrefix = `${remoteName}/`;
+  const baseBranch =
+    remoteHead?.startsWith(remotePrefix) && isSameRepository(fetchUrl, pushed.remoteUrl)
+      ? remoteHead.slice(remotePrefix.length)
+      : null;
   return buildGitPullRequestLink({
     remoteUrl: pushed.remoteUrl,
     headBranch: pushed.headBranch,
-    baseBranch: remoteHead?.startsWith(remotePrefix) ? remoteHead.slice(remotePrefix.length) : null,
+    baseBranch,
   });
 }
