@@ -1,3 +1,5 @@
+import { lstat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   DEFAULT_GIT_COMMAND_TIMEOUT_MS,
   DEFAULT_GIT_OUTPUT_BYTES,
@@ -48,7 +50,7 @@ function entryMatchesRequestedPath(entry: GitStatusEntry, requestedPath: string)
 }
 
 const GIT_DISCARD_REPLACED_DELETION_ERROR =
-  "Cannot discard a staged deletion while an untracked file exists at the same path. Move or delete it first:";
+  "Cannot discard a staged deletion while a file exists at the same path. Move or delete it first:";
 
 /** 只有已暂存删除（`D.`）的条目：index 中已没有该路径，工作区中同一路径上的内容是未跟踪的。 */
 function isStagedDeletionOnly(entry: GitStatusEntry): boolean {
@@ -56,26 +58,30 @@ function isStagedDeletionOnly(entry: GitStatusEntry): boolean {
 }
 
 /**
- * 请求路径中，已暂存删除、而工作区同一路径上又有未跟踪内容（重新创建的文件或目录）的路径。
+ * 请求路径中，已暂存删除、而工作区同一路径上又有内容（重新创建的文件、目录或链接）的路径。
  * 修复原因：丢弃 staged 的删除用 `git restore --source=HEAD --staged --worktree` 恢复 HEAD 版本，
  * 会静默覆盖用户在该路径上重新创建的文件；确认文案把删除条目计为不删除任何文件，不会提示这一点。
- * 修复依据：出现这种冲突时拒绝整个丢弃并列出这些路径，由用户先移走或删除重新创建的内容。
+ * 重新创建的内容被 .gitignore 忽略时（如已跟踪的 `.env`），status 里只有删除条目，按未跟踪条目判断会漏掉。
+ * 修复依据：直接检查工作区中该路径是否存在（不跟随链接），存在时拒绝整个丢弃并列出这些路径。
  */
-function findReplacedStagedDeletions(
+async function findReplacedStagedDeletions(
+  context: GitPathMutationContext,
   entries: readonly GitStatusEntry[],
-  requestedPaths: readonly string[],
-): string[] {
-  const untracked = entries
-    .filter((entry) => entry.isUntracked)
-    .map((entry) => entry.path.replace(/\/$/, ""));
-  return entries
-    .filter(
-      (entry) =>
-        isStagedDeletionOnly(entry) &&
-        requestedPaths.some((path) => entryMatchesRequestedPath(entry, path)) &&
-        untracked.some((path) => entry.path === path || entry.path.startsWith(`${path}/`)),
-    )
-    .map((entry) => entry.path);
+): Promise<string[]> {
+  const candidates = entries.filter(
+    (entry) =>
+      isStagedDeletionOnly(entry) &&
+      context.repoPaths.some((path) => entryMatchesRequestedPath(entry, path)),
+  );
+  const present = await Promise.all(
+    candidates.map((entry) =>
+      lstat(join(context.repoRoot, ...entry.path.split("/"))).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return candidates.filter((_, index) => present[index]).map((entry) => entry.path);
 }
 
 function pushUnique(target: string[], seen: Set<string>, path: string): void {
@@ -263,7 +269,7 @@ export async function discardGitPaths(
     throw new Error(GIT_DISCARD_CONFLICTED_ERROR);
   }
   if (staged) {
-    const replaced = findReplacedStagedDeletions(entries, context.repoPaths);
+    const replaced = await findReplacedStagedDeletions(context, entries);
     if (replaced.length > 0) {
       throw new Error(`${GIT_DISCARD_REPLACED_DELETION_ERROR} ${replaced.join(", ")}`);
     }

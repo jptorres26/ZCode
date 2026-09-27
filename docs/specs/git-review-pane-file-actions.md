@@ -63,8 +63,9 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
     路径的状态，仍有未跟踪内容时报错并列出这些路径，界面按失败提示。
   - 已跟踪路径：`staged=false` 用 `git restore --worktree`；`staged=true` 用
     `git restore --source=HEAD --staged --worktree`，重命名同时恢复原路径。
-  - 已暂存删除（`D.`）而同一路径上又有重新创建的未跟踪文件或目录时：`staged=true` 拒绝整个丢弃并列出这些路径
-    （恢复 HEAD 版本会静默覆盖重新创建的内容），由用户先移走或删除它；`staged=false` 跳过只匹配到已暂存删除的路径
+  - 已暂存删除（`D.`）而工作区同一路径上又有内容（重新创建的文件、目录或链接，包括被 .gitignore 忽略的，如已跟踪的
+    `.env`）时：`staged=true` 拒绝整个丢弃并列出这些路径（按工作区中该路径是否存在判断，不依赖 status；恢复 HEAD
+    版本会静默覆盖重新创建的内容），由用户先移走或删除它；`staged=false` 跳过只匹配到已暂存删除的路径
     （index 中没有该路径，工作区一侧没有可恢复的内容），只删除重新创建的未跟踪内容，保留已暂存的删除。
   - 仓库尚无提交且 `staged=true` 时用 `git rm -f -r -q -- <paths>`（新文件从 index 与工作区删除）。
 - 所有分支在执行后调用既有 `invalidate(workspacePath)`。
