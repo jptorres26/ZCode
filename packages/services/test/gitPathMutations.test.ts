@@ -172,7 +172,7 @@ withRepo(
     // staged：恢复 HEAD 版本会覆盖重新创建的文件，拒绝且不改动任何内容
     await assert.rejects(
       createGitCliRepo().discard(dir, ["a.txt"], true),
-      /untracked file exists at the same path[^:]*: a\.txt$/,
+      /a file exists at the same path[^:]*: a\.txt$/,
     );
     assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "replacement\n");
     assert.deepEqual(await porcelain(dir), ["D  a.txt", "?? a.txt"]);
@@ -180,6 +180,22 @@ withRepo(
     await createGitCliRepo().discard(dir, ["a.txt"], false);
     assert.equal(await exists(join(dir, "a.txt")), false);
     assert.deepEqual(await porcelain(dir), ["D  a.txt"]);
+  },
+);
+
+withRepo(
+  "a staged deletion of a tracked, ignored file re-created at the same path is not discarded over it",
+  { commit: true },
+  async (dir) => {
+    // 已跟踪但被忽略的文件（如 .env）：重新创建后 status 里只有删除条目
+    await writeFile(join(dir, ".env"), "SECRET=old\n");
+    await git(dir, "add", "-f", ".env");
+    await git(dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "env");
+    await writeFile(join(dir, ".gitignore"), "*.log\n.env\n");
+    await git(dir, "rm", "-q", ".env");
+    await writeFile(join(dir, ".env"), "SECRET=new\n");
+    await assert.rejects(createGitCliRepo().discard(dir, [".env"], true), /same path[^:]*: \.env$/);
+    assert.equal(await readFile(join(dir, ".env"), "utf8"), "SECRET=new\n");
   },
 );
 
