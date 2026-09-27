@@ -258,13 +258,17 @@ export async function readManagedWorktree(context: {
   });
   const lines = status.stdout.split("\n").filter((line) => line.length > 0);
   const instanceId = (await readDirectoryIdentity(current.path).catch(() => null)) ?? "";
+  // 修复原因：status 失败、超时或输出超限时只记为“有未提交改动”、被忽略的文件记为没有；用户只同意丢弃改动后，
+  // 删除时同样读取失败即会带 --force 删掉从未提示过的被忽略文件（如 .env）。
+  // 修复依据：读不出状态时无法区分两类内容，两者都按存在处理并标出 statusUnknown，删除前须同时同意两类内容。
+  const statusUnknown = status.exitCode !== 0 || status.timedOut || status.outputTruncated;
   return {
     worktreePath: current.path,
     mainWorktreePath: main.path,
     branchName: current.branchName,
-    // 读取失败时按有改动处理：删除前必须经过“丢弃改动”的确认。
-    hasUncommittedChanges: status.exitCode !== 0 || lines.some((line) => !line.startsWith("!! ")),
-    hasIgnoredFiles: status.exitCode === 0 && lines.some((line) => line.startsWith("!! ")),
+    hasUncommittedChanges: statusUnknown || lines.some((line) => !line.startsWith("!! ")),
+    hasIgnoredFiles: statusUnknown || lines.some((line) => line.startsWith("!! ")),
+    ...(statusUnknown ? { statusUnknown: true } : {}),
     instanceId,
   };
 }

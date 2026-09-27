@@ -55,8 +55,10 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   `{ worktreePath, mainWorktreePath, branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }`，否则 `null`
   （`instanceId` 为该 worktree 目录的设备号、inode 与创建时间；主检出与
   分支名取自 `git worktree list --porcelain`；读取时执行 `git status --porcelain --untracked-files=normal --ignored`：
-  `hasUncommittedChanges` 为是否有改动（含未跟踪文件），读取失败按有改动处理；`hasIgnoredFiles` 为是否有被 Git
-  忽略的文件（`!! ` 条目，如 `.env`、安装的依赖），它们会随 worktree 一起删除）。
+  `hasUncommittedChanges` 为是否有改动（含未跟踪文件）；`hasIgnoredFiles` 为是否有被 Git
+  忽略的文件（`!! ` 条目，如 `.env`、安装的依赖），它们会随 worktree 一起删除。status 读取失败（退出码非 0、超时或
+  输出超限）时无法区分两类内容，两者都按存在处理并返回 `statusUnknown: true`：只按“有改动”处理时，用户只同意丢弃改动，
+  删除时同样读取失败即会带 `--force` 删掉从未提示过的被忽略文件）。
 - `IGitService.removeWorktree({ workspacePath, force? })`：
   - 不满足条件 → `{ ok: false, reason: "not-managed" }`；
   - 请求带 `force`（同意丢弃未提交改动）、`discardIgnored`（同意删除被 Git 忽略的文件）与 `expectedInstanceId`
@@ -96,7 +98,8 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以
      `force` 删除。有被 Git 忽略的文件时同样先确认（文案说明本地配置、安装的依赖等会被永久删除；与未提交改动同时
      存在时合并为一次确认）。确认只针对当时存在的内容：未提交改动对应 `force`，被忽略的文件对应 `discardIgnored`，
-     之后才出现的另一类内容返回 `dirty`。这次读取的 `instanceId` 必须与菜单打开时相同，否则提示已不是确认的 worktree 并结束。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
+     之后才出现的另一类内容返回 `dirty`。`statusUnknown` 时确认说明无法读取其中内容、未提交的改动与被忽略的文件都可能
+     永久丢失，确认后同时带 `force` 与 `discardIgnored`。这次读取的 `instanceId` 必须与菜单打开时相同，否则提示已不是确认的 worktree 并结束。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
      确认之后的步骤由 `packages/ui/src/lib/worktreeRemoval.ts` 的 `removeManagedWorktree` 执行（不依赖 React，
      侧栏行关闭入口后即卸载）。**每次尝试都完整执行 4–6**，包括 toast 中的每次重试：先检查其它入口，再结束终端、
      释放 runtime、删除、解除封锁。这些调用都可重复（关闭已关闭的入口为空操作，没有运行中的 runtime 时释放为空操作）。
