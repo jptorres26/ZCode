@@ -71,7 +71,10 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   - Conflicted paths fail with `Cannot discard paths with unresolved conflicts.` and nothing is
     partially applied.
   - Untracked paths are removed with `git clean -f -q -- <paths>`; `-x` is never used, so ignored
-    files are untouched.
+    files are untouched. Only one `-f` is passed, so a nested Git repository is not deleted (it may hold
+    unpushed commits, and the confirmation doesn't say a repository will go), yet git still exits 0.
+    So afterwards the status of those paths is read again, and if untracked content remains it fails
+    and lists those paths, which the UI shows as a failure.
   - Tracked paths: `staged=false` uses `git restore --worktree`; `staged=true` uses
     `git restore --source=HEAD --staged --worktree`, restoring the original path of a rename too.
   - With no commit yet and `staged=true`, it uses `git rm -f -r -q -- <paths>` (the new file is

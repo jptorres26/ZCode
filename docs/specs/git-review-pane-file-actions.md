@@ -58,7 +58,9 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
   - 仓库尚无提交（HEAD 不存在）时改用 `git rm --cached -r -q -- <paths>`，保留工作区文件。
 - `discard(paths, staged)`：
   - 冲突路径直接报错 `Cannot discard paths with unresolved conflicts.`，不做部分执行。
-  - 未跟踪路径用 `git clean -f -q -- <paths>` 删除；不使用 `-x`，被忽略的文件不受影响。
+  - 未跟踪路径用 `git clean -f -q -- <paths>` 删除；不使用 `-x`，被忽略的文件不受影响。只用一个 `-f`：嵌套的 Git 仓库
+    不会被删除（其中可能有未推送的提交，确认文案也没有说明会删除仓库），而 git 仍以 0 退出；因此清理后重新读取这些
+    路径的状态，仍有未跟踪内容时报错并列出这些路径，界面按失败提示。
   - 已跟踪路径：`staged=false` 用 `git restore --worktree`；`staged=true` 用
     `git restore --source=HEAD --staged --worktree`，重命名同时恢复原路径。
   - 仓库尚无提交且 `staged=true` 时用 `git rm -f -r -q -- <paths>`（新文件从 index 与工作区删除）。

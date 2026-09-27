@@ -28,6 +28,8 @@ export interface GitPathMutationContext {
 }
 
 const GIT_DISCARD_CONFLICTED_ERROR = "Cannot discard paths with unresolved conflicts.";
+const GIT_DISCARD_NESTED_REPOSITORY_ERROR =
+  "Some untracked folders were not fully deleted because they contain a nested Git repository:";
 
 function toDirectoryPrefix(path: string): string {
   return path.endsWith("/") ? path : `${path}/`;
@@ -249,5 +251,19 @@ export async function discardGitPaths(
 
   if (plan.untrackedPaths.length > 0) {
     await runGit(context, "git clean", ["clean", "-f", "-q", "--", ...plan.untrackedPaths]);
+    // 修复原因：只加一个 -f 时 git clean 不删除嵌套的 Git 仓库，却以 0 退出，界面当作已丢弃，该行却仍在。
+    // 修复依据：不加第二个 -f（嵌套仓库可能有未推送的提交，确认文案也没有说明会删除仓库）；清理后重新读取这些路径的
+    // 状态，仍有未跟踪内容时报错并列出这些路径。
+    const remaining = planGitPathMutation(
+      await readMutationEntries(
+        { ...context, repoPaths: plan.untrackedPaths },
+        { includeRenameOrigins: false },
+      ),
+      plan.untrackedPaths,
+      { includeRenameOrigins: false },
+    ).untrackedPaths;
+    if (remaining.length > 0) {
+      throw new Error(`${GIT_DISCARD_NESTED_REPOSITORY_ERROR} ${remaining.join(", ")}`);
+    }
   }
 }

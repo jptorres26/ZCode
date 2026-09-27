@@ -144,6 +144,25 @@ withRepo("discard removes an untracked directory", { commit: true }, async (dir)
   assert.deepEqual(await porcelain(dir), []);
 });
 
+withRepo(
+  "discard reports an untracked folder whose nested repository git clean kept",
+  { commit: true },
+  async (dir) => {
+    await mkdir(join(dir, "gen", "nested"), { recursive: true });
+    await writeFile(join(dir, "gen", "x.txt"), "x\n");
+    await git(join(dir, "gen", "nested"), "init", "-q");
+    await writeFile(join(dir, "gen", "nested", "keep.txt"), "keep\n");
+    await assert.rejects(
+      createGitCliRepo().discard(dir, ["gen/"], false),
+      /nested Git repository: gen$/,
+    );
+    // 仓库之外的内容已删除，嵌套仓库原样保留
+    assert.equal(await exists(join(dir, "gen", "x.txt")), false);
+    assert.equal(await exists(join(dir, "gen", "nested", "keep.txt")), true);
+    assert.equal(await exists(join(dir, "gen", "nested", ".git")), true);
+  },
+);
+
 withRepo("discard of a staged rename restores the original path", { commit: true }, async (dir) => {
   await git(dir, "mv", "b.txt", "b2.txt");
   await createGitCliRepo().discard(dir, ["b2.txt"], true);
