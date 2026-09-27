@@ -116,7 +116,7 @@ test("parseStagedRenameEntries reads rename pairs from git diff -z output", () =
 
 withRepo("discard restores an unstaged modification", { commit: true }, async (dir) => {
   await writeFile(join(dir, "a.txt"), "changed\n");
-  await createGitCliRepo().discard(dir, ["a.txt"], false);
+  await createGitCliRepo().discard(dir, ["a.txt"], false, []);
   assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "a\n");
   assert.deepEqual(await porcelain(dir), []);
 });
@@ -128,7 +128,7 @@ withRepo(
     await writeFile(join(dir, "new.txt"), "new\n");
     await writeFile(join(dir, "keep.log"), "log\n");
     await writeFile(join(dir, "a.txt"), "changed\n");
-    await createGitCliRepo().discard(dir, ["new.txt", "a.txt", "keep.log"], false);
+    await createGitCliRepo().discard(dir, ["new.txt", "a.txt", "keep.log"], false, ["new.txt"]);
     assert.equal(await exists(join(dir, "new.txt")), false);
     assert.equal(await exists(join(dir, "keep.log")), true);
     assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "a\n");
@@ -139,7 +139,7 @@ withRepo(
 withRepo("discard removes an untracked directory", { commit: true }, async (dir) => {
   await mkdir(join(dir, "gen", "deep"), { recursive: true });
   await writeFile(join(dir, "gen", "deep", "x.txt"), "x\n");
-  await createGitCliRepo().discard(dir, ["gen"], false);
+  await createGitCliRepo().discard(dir, ["gen"], false, ["gen"]);
   assert.equal(await exists(join(dir, "gen", "deep", "x.txt")), false);
   assert.deepEqual(await porcelain(dir), []);
 });
@@ -153,7 +153,7 @@ withRepo(
     await git(join(dir, "gen", "nested"), "init", "-q");
     await writeFile(join(dir, "gen", "nested", "keep.txt"), "keep\n");
     await assert.rejects(
-      createGitCliRepo().discard(dir, ["gen/"], false),
+      createGitCliRepo().discard(dir, ["gen/"], false, ["gen/"]),
       /nested Git repository: gen$/,
     );
     // 仓库之外的内容已删除，嵌套仓库原样保留
@@ -171,13 +171,13 @@ withRepo(
     await writeFile(join(dir, "a.txt"), "replacement\n");
     // staged：恢复 HEAD 版本会覆盖重新创建的文件，拒绝且不改动任何内容
     await assert.rejects(
-      createGitCliRepo().discard(dir, ["a.txt"], true),
+      createGitCliRepo().discard(dir, ["a.txt"], true, []),
       /a file exists at the same path[^:]*: a\.txt$/,
     );
     assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "replacement\n");
     assert.deepEqual(await porcelain(dir), ["D  a.txt", "?? a.txt"]);
     // unstaged：丢弃重新创建的未跟踪文件，保留已暂存的删除
-    await createGitCliRepo().discard(dir, ["a.txt"], false);
+    await createGitCliRepo().discard(dir, ["a.txt"], false, ["a.txt"]);
     assert.equal(await exists(join(dir, "a.txt")), false);
     assert.deepEqual(await porcelain(dir), ["D  a.txt"]);
   },
@@ -194,14 +194,43 @@ withRepo(
     await writeFile(join(dir, ".gitignore"), "*.log\n.env\n");
     await git(dir, "rm", "-q", ".env");
     await writeFile(join(dir, ".env"), "SECRET=new\n");
-    await assert.rejects(createGitCliRepo().discard(dir, [".env"], true), /same path[^:]*: \.env$/);
+    await assert.rejects(
+      createGitCliRepo().discard(dir, [".env"], true, []),
+      /same path[^:]*: \.env$/,
+    );
     assert.equal(await readFile(join(dir, ".env"), "utf8"), "SECRET=new\n");
+  },
+);
+
+withRepo(
+  "discard refuses to delete a file the confirmation didn't mention",
+  { commit: true },
+  async (dir) => {
+    // 确认时 a.txt 是已跟踪的修改（不删除文件）；确认期间被 git rm --cached 变成已暂存删除加同一路径的未跟踪文件
+    await writeFile(join(dir, "a.txt"), "changed\n");
+    await git(dir, "rm", "-q", "--cached", "a.txt");
+    await assert.rejects(
+      createGitCliRepo().discard(dir, ["a.txt"], false, []),
+      /deleted from disk[^:]*: a\.txt$/,
+    );
+    assert.equal(await readFile(join(dir, "a.txt"), "utf8"), "changed\n");
+    assert.deepEqual(await porcelain(dir), ["D  a.txt", "?? a.txt"]);
+    // staged 来源：新增文件在确认中计入删除才会被删除
+    await writeFile(join(dir, "n.txt"), "new\n");
+    await git(dir, "add", "n.txt");
+    await assert.rejects(
+      createGitCliRepo().discard(dir, ["n.txt"], true, []),
+      /deleted from disk[^:]*: n\.txt$/,
+    );
+    assert.equal(await exists(join(dir, "n.txt")), true);
+    await createGitCliRepo().discard(dir, ["n.txt"], true, [join(dir, "n.txt")]);
+    assert.equal(await exists(join(dir, "n.txt")), false);
   },
 );
 
 withRepo("discard of a staged rename restores the original path", { commit: true }, async (dir) => {
   await git(dir, "mv", "b.txt", "b2.txt");
-  await createGitCliRepo().discard(dir, ["b2.txt"], true);
+  await createGitCliRepo().discard(dir, ["b2.txt"], true, []);
   assert.equal(await readFile(join(dir, "b.txt"), "utf8"), "b\n");
   assert.equal(await exists(join(dir, "b2.txt")), false);
   assert.deepEqual(await porcelain(dir), []);
@@ -229,7 +258,7 @@ withRepo("discard rejects conflicted paths and changes nothing", { commit: true 
   const conflictedContent = await readFile(join(dir, "a.txt"), "utf8");
 
   await assert.rejects(
-    createGitCliRepo().discard(dir, ["a.txt", "b.txt"], false),
+    createGitCliRepo().discard(dir, ["a.txt", "b.txt"], false, []),
     /unresolved conflicts/,
   );
   assert.equal(await readFile(join(dir, "a.txt"), "utf8"), conflictedContent);
@@ -264,7 +293,7 @@ withRepo(
   { commit: false },
   async (dir) => {
     await git(dir, "add", "a.txt");
-    await createGitCliRepo().discard(dir, ["a.txt"], true);
+    await createGitCliRepo().discard(dir, ["a.txt"], true, ["a.txt"]);
     assert.equal(await exists(join(dir, "a.txt")), false);
     assert.ok(!(await porcelain(dir)).some((line) => line.endsWith("a.txt")));
   },
@@ -305,7 +334,7 @@ withRepo(
       ["A  file-link", "?? link"],
     );
 
-    await gitRepo.discard(dir, [join(dir, "link")], false);
+    await gitRepo.discard(dir, [join(dir, "link")], false, [join(dir, "link")]);
     assert.equal(await exists(join(dir, "link")), false);
     assert.equal(await readFile(join(dir, "target", "keep.txt"), "utf-8"), "keep\n");
   },

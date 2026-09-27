@@ -265,6 +265,11 @@ export interface GitPathMutationRequest extends GitRepositoryRequest {
 
 export interface GitDiscardPathsRequest extends GitPathMutationRequest {
   staged?: boolean;
+  /**
+   * 确认框告知会从磁盘删除的路径（paths 的子集，同一形式）。服务端按最新状态重新规划，
+   * 还会删除其它路径时拒绝整个丢弃、不做任何修改。
+   */
+  confirmedDeletionPaths: string[];
 }
 
 export interface GitCommitRequest extends GitRepositoryRequest {

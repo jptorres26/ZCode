@@ -1487,7 +1487,12 @@ export function createGitCliRepo(options?: {
       invalidate(workspacePath);
     },
 
-    async discard(workspacePath: string, paths: string[], staged: boolean): Promise<void> {
+    async discard(
+      workspacePath: string,
+      paths: string[],
+      staged: boolean,
+      confirmedDeletionPaths: readonly string[],
+    ): Promise<void> {
       const resolution = ensureRepositoryAvailable(
         await this.resolveRepository(workspacePath),
         "discard paths",
@@ -1498,11 +1503,16 @@ export function createGitCliRepo(options?: {
       if (repoPaths.length === 0) {
         return;
       }
+      // 与请求路径按同一规则规范化，才能与重新规划出的删除路径逐一比较。
+      const confirmedRepoPaths = await Promise.all(
+        confirmedDeletionPaths.map((path) => normalizeInputPath(resolution, path)),
+      );
 
       try {
         await discardGitPaths(
           { commandProvider, repoRoot: resolution.repoRoot, repoPaths },
           staged,
+          confirmedRepoPaths,
         );
       } finally {
         // 丢弃可能在 restore 成功、clean 失败时部分生效，缓存必须无条件失效。

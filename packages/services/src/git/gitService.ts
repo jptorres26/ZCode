@@ -253,7 +253,12 @@ export function createGitService(options?: {
     },
 
     async discardPaths(params) {
-      await repo.discard(params.workspacePath, params.paths, params.staged ?? false);
+      await repo.discard(
+        params.workspacePath,
+        params.paths,
+        params.staged ?? false,
+        params.confirmedDeletionPaths,
+      );
     },
 
     async generateCommitMessage(params) {

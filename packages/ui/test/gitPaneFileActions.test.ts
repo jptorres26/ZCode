@@ -85,8 +85,8 @@ test("bulk discard skips conflicts and counts untracked deletions", () => {
     stagePaths: ["a.ts", "n.ts", "c.ts"],
     unstagePaths: [],
     discardPaths: ["a.ts", "n.ts"],
-    discardDeletedFileCount: 1,
-    discardDeletedFolderCount: 0,
+    discardDeletedFilePaths: ["n.ts"],
+    discardDeletedFolderPaths: [],
   });
   assert.deepEqual(
     getGitPaneBulkActionPlan(
@@ -97,8 +97,8 @@ test("bulk discard skips conflicts and counts untracked deletions", () => {
       stagePaths: [],
       unstagePaths: ["a.ts", "new.ts"],
       discardPaths: ["a.ts", "new.ts"],
-      discardDeletedFileCount: 1,
-      discardDeletedFolderCount: 0,
+      discardDeletedFilePaths: ["new.ts"],
+      discardDeletedFolderPaths: [],
     },
   );
 });
@@ -113,8 +113,8 @@ test("a collapsed untracked directory counts as a folder, not as one file", asyn
     ],
     ready("unstaged"),
   );
-  assert.equal(plan.discardDeletedFolderCount, 1);
-  assert.equal(plan.discardDeletedFileCount, 1);
+  assert.deepEqual(plan.discardDeletedFolderPaths, ["build"]);
+  assert.deepEqual(plan.discardDeletedFilePaths, ["n.ts"]);
   assert.equal(
     getGitPaneDiscardDeletion(change("build/", "untracked", { untracked: true }), "unstaged"),
     "folder",
