@@ -141,4 +141,9 @@ test("collapsed untracked folders and deleted files can't be opened in the viewe
     true,
   );
   assert.equal(canOpenGitPaneChangeInViewer(change("a.ts", "unstaged")), true);
+  // 子模块在工作区中是目录：status 把它报为普通的 modified 条目，由 isSubmodule 区分。
+  assert.equal(
+    canOpenGitPaneChangeInViewer({ ...change("vendor/lib", "unstaged"), isSubmodule: true }),
+    false,
+  );
 });

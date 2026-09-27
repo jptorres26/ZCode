@@ -120,13 +120,14 @@ function isCollapsedUntrackedDirectory(
 }
 
 /**
- * “打开文件”是否可用：已删除的文件和折叠显示的未跟踪目录都没有可预览的文件。
- * 修复原因：折叠目录的 kind 为 added，旧条件只排除 deleted，会把目录交给文件预览并报读取错误。
+ * “打开文件”是否可用：已删除的文件、折叠显示的未跟踪目录和子模块都没有可预览的文件。
+ * 修复原因：折叠目录的 kind 为 added、子模块是普通的 modified 条目，旧条件只排除 deleted，
+ * 会把目录交给文件预览并报读取错误。修复依据：服务端从 status/diff 标出子模块（isSubmodule）。
  */
 export function canOpenGitPaneChangeInViewer(
-  change: Pick<GitFileChange, "repoRelativePath" | "kind" | "isUntracked">,
+  change: Pick<GitFileChange, "repoRelativePath" | "kind" | "isUntracked" | "isSubmodule">,
 ): boolean {
-  return change.kind !== "deleted" && !isCollapsedUntrackedDirectory(change);
+  return change.kind !== "deleted" && !isCollapsedUntrackedDirectory(change) && !change.isSubmodule;
 }
 
 /** `discardPaths` 的 staged 参数：staged 来源要同时恢复 index 与工作区。 */

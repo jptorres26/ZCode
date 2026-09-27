@@ -44,6 +44,7 @@ import {
   normalizeInputPath,
   parseGitBranchMutationIssues,
   parseGitConfigValue,
+  parseGitlinkPaths,
   parseNumstat,
   parseStatusPorcelain,
   toInvalidBranchNameIssue,
@@ -1400,20 +1401,26 @@ export function createGitCliRepo(options?: {
         };
       }
 
-      const result = await commandProvider.run({
-        cwd: status.resolution.repoRoot,
-        args: [
-          "diff",
-          "--numstat",
-          "-z",
-          "--find-renames",
-          `${status.summary.trackingBranchName}...HEAD`,
-          "--",
-        ],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-        maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
-      });
+      const range = `${status.summary.trackingBranchName}...HEAD`;
+      // numstat 不区分子模块；raw 的 mode 160000 标出 gitlink（只比较树，不读内容，开销小）。
+      const [result, rawResult] = await Promise.all([
+        commandProvider.run({
+          cwd: status.resolution.repoRoot,
+          args: ["diff", "--numstat", "-z", "--find-renames", range, "--"],
+          timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+        }),
+        commandProvider.run({
+          cwd: status.resolution.repoRoot,
+          args: ["diff", "--raw", "--no-renames", "-z", range, "--"],
+          timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+        }),
+      ]);
       ensureGitCommandSucceeded("git diff --numstat upstream...HEAD", result);
+      // 子模块标记只影响“打开文件”是否可用，读取失败时不影响对比结果。
+      const gitlinkPaths =
+        rawResult.exitCode === 0 ? parseGitlinkPaths(rawResult.stdout) : new Set<string>();
 
       const changes = Array.from(parseNumstat(result.stdout).entries()).map(
         ([path, stat]): GitBranchComparisonChange => ({
@@ -1422,6 +1429,7 @@ export function createGitCliRepo(options?: {
           kind: inferKindFromNumstat(stat),
           added: stat.added,
           removed: stat.removed,
+          ...(gitlinkPaths.has(path) ? { isSubmodule: true } : {}),
         }),
       );
 
