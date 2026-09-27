@@ -48,10 +48,10 @@ export interface GitPaneBulkActionPlan {
   stagePaths: string[];
   unstagePaths: string[];
   discardPaths: string[];
-  /** 批量丢弃中会从磁盘删除的新文件数量（未跟踪，或已暂存的新增文件），用于确认文案。 */
-  discardDeletedFileCount: number;
-  /** 其中折叠显示的未跟踪目录（`dir/`）数量：整个目录连同内容都会被删除，不能按一个文件计。 */
-  discardDeletedFolderCount: number;
+  /** 批量丢弃中会从磁盘删除的新文件（未跟踪，或已暂存的新增文件）：数量用于确认文案，路径随请求交给服务端核对。 */
+  discardDeletedFilePaths: string[];
+  /** 其中折叠显示的未跟踪目录（`dir/`）：整个目录连同内容都会被删除，不能按一个文件计。 */
+  discardDeletedFolderPaths: string[];
 }
 
 export function getGitPaneBulkActionPlan(
@@ -62,8 +62,8 @@ export function getGitPaneBulkActionPlan(
     stagePaths: [],
     unstagePaths: [],
     discardPaths: [],
-    discardDeletedFileCount: 0,
-    discardDeletedFolderCount: 0,
+    discardDeletedFilePaths: [],
+    discardDeletedFolderPaths: [],
   };
   for (const change of changes) {
     const actions = getGitPaneFileActions(change, context);
@@ -77,9 +77,9 @@ export function getGitPaneBulkActionPlan(
       plan.discardPaths.push(change.path);
       const deletion = getGitPaneDiscardDeletion(change, context.sourceId);
       if (deletion === "folder") {
-        plan.discardDeletedFolderCount += 1;
+        plan.discardDeletedFolderPaths.push(change.path);
       } else if (deletion === "file") {
-        plan.discardDeletedFileCount += 1;
+        plan.discardDeletedFilePaths.push(change.path);
       }
     }
   }

@@ -98,7 +98,13 @@ export interface GitCliRepo {
   getBranchComparison(workspacePath: string): Promise<GitBranchComparisonSnapshot>;
   stage(workspacePath: string, paths: string[]): Promise<void>;
   unstage(workspacePath: string, paths: string[]): Promise<void>;
-  discard(workspacePath: string, paths: string[], staged: boolean): Promise<void>;
+  /** confirmedDeletionPaths：确认框告知会从磁盘删除的路径，与 paths 同一形式。 */
+  discard(
+    workspacePath: string,
+    paths: string[],
+    staged: boolean,
+    confirmedDeletionPaths: readonly string[],
+  ): Promise<void>;
   commit(
     workspacePath: string,
     message: string,

@@ -89,6 +89,16 @@ workspace is not a repository. No actions render for datasets with `readonly ===
     staged deletion.
   - With no commit yet and `staged=true`, it uses `git rm -f -r -q -- <paths>` (the new file is
     removed from the index and worktree).
+  - The state can change between the confirmation and the discard (for example a tracked modified file
+    turned by `git rm --cached` into a staged deletion plus an untracked file at the same path, which
+    the confirmation, based on the old snapshot, didn't warn about). The request carries
+    `confirmedDeletionPaths`: the paths the confirmation said it would delete from disk (the rows
+    counted as deletions). The service plans again from the current state, and if a requested path it
+    would delete from disk is missing from that list, it refuses the whole discard, lists those paths
+    and changes nothing. Deleted from disk means the untracked paths passed to `git clean`, and with
+    `staged=true` the files added in the index (absent from HEAD, so gone after the restore), except the
+    new path of a staged rename (the original file comes back). This matches the confirmation's count:
+    untracked rows, or rows of kind added in the staged source.
 - Every branch calls the existing `invalidate(workspacePath)` afterwards.
 
 ## Interaction and visuals
@@ -117,6 +127,9 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   status output overflows and switches to collapsed mode, a whole untracked folder shows as a single
   `dir/` entry while discarding deletes everything inside it: such entries are counted as folders
   and the text says "N untracked folder(s), with everything inside them", never as one file.
+  The paths counted as deletions go to the service as `confirmedDeletionPaths`. When the service finds
+  it would delete other paths too, it refuses, the toast shows why, and after the pane refreshes the
+  user confirms again.
 - While a request is in flight all action buttons are disabled; on failure a toast shows the
   service error message and `logger.warn` records it (no file contents are logged).
 - Copy uses `git.fileAction.*` i18n keys, provided in both `en-US` and `zh-CN`.

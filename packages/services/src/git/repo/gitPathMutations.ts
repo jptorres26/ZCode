@@ -49,6 +49,38 @@ function entryMatchesRequestedPath(entry: GitStatusEntry, requestedPath: string)
   return entry.isUntracked && entry.path.endsWith("/") && requestedPath.startsWith(entry.path);
 }
 
+const GIT_DISCARD_UNCONFIRMED_DELETION_ERROR =
+  "These paths changed after you confirmed and would now be deleted from disk. Review the changes and try again:";
+
+/**
+ * 这次丢弃会从磁盘删除的请求路径：交给 git clean 的未跟踪路径；staged 丢弃时 index 中新增（HEAD 中没有）的文件，
+ * 恢复到 HEAD（或无 HEAD 时 git rm -f）后不再存在。已暂存重命名的新路径不算（原文件会恢复）：按路径裁剪的 status
+ * 把它列为新增，不裁剪读取的重命名条目才能识别。口径与界面确认文案一致（未跟踪的行，或 staged 来源中 kind 为 added 的行）。
+ */
+function findDeletedRequestPaths(
+  entries: readonly GitStatusEntry[],
+  plan: GitPathMutationPlan,
+  staged: boolean,
+): string[] {
+  const deleted = new Set(plan.untrackedPaths);
+  if (staged) {
+    const renameTargets = new Set(
+      entries.filter((entry) => entry.kind === "renamed").map((entry) => entry.path),
+    );
+    for (const path of plan.trackedPaths) {
+      const addsFile = entries.some(
+        (entry) =>
+          !entry.isUntracked &&
+          entry.kind === "added" &&
+          !renameTargets.has(entry.path) &&
+          entryMatchesRequestedPath(entry, path),
+      );
+      if (addsFile) deleted.add(path);
+    }
+  }
+  return [...deleted];
+}
+
 const GIT_DISCARD_REPLACED_DELETION_ERROR =
   "Cannot discard a staged deletion while a file exists at the same path. Move or delete it first:";
 
@@ -265,6 +297,8 @@ export async function unstageGitPaths(context: GitPathMutationContext): Promise<
 export async function discardGitPaths(
   context: GitPathMutationContext,
   staged: boolean,
+  /** 确认框告知会从磁盘删除的仓库相对路径（已规范化）。 */
+  confirmedDeletionPaths: readonly string[],
 ): Promise<void> {
   const entries = await readMutationEntries(context, { includeRenameOrigins: staged });
   const plan = planGitPathMutation(entries, context.repoPaths, { includeRenameOrigins: staged });
@@ -276,6 +310,16 @@ export async function discardGitPaths(
     if (replaced.length > 0) {
       throw new Error(`${GIT_DISCARD_REPLACED_DELETION_ERROR} ${replaced.join(", ")}`);
     }
+  }
+  // 修复原因：确认框按旧快照计算删除数量；确认期间已跟踪的修改文件可能被 `git rm --cached` 变成已暂存删除加同一路径的
+  // 未跟踪文件，重新规划后会 git clean 删掉它，而用户看到的只是普通的丢弃提示。
+  // 修复依据：请求带上确认过的删除路径，重新规划出的删除路径超出时拒绝整个丢弃，不做任何修改。
+  const confirmed = new Set(confirmedDeletionPaths);
+  const unconfirmed = findDeletedRequestPaths(entries, plan, staged).filter(
+    (path) => !confirmed.has(path),
+  );
+  if (unconfirmed.length > 0) {
+    throw new Error(`${GIT_DISCARD_UNCONFIRMED_DELETION_ERROR} ${unconfirmed.join(", ")}`);
   }
   // 修复原因：unstaged 丢弃只恢复工作区；只有已暂存删除的路径在 index 中不存在，交给 `restore --worktree`
   // 会以 pathspec 不匹配失败，连带同一路径上重新创建的未跟踪文件也无法丢弃。

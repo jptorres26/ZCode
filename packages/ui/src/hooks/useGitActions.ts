@@ -74,34 +74,33 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
   const discardPaths = useCallback(
     async (
       paths: string[],
-      discardOptions: { staged: boolean; deletedFileCount: number; deletedFolderCount: number },
+      discardOptions: { staged: boolean; deletedFilePaths: string[]; deletedFolderPaths: string[] },
     ) => {
       if (inFlightRef.current || paths.length === 0) {
         return false;
       }
+      const deletedFileCount = discardOptions.deletedFilePaths.length;
+      const deletedFolderCount = discardOptions.deletedFolderPaths.length;
       const confirmed = await requestConfirmation({
         title: intl.formatMessage(
           { id: "git.fileAction.discardConfirmTitle" },
           { count: paths.length },
         ),
         description:
-          discardOptions.deletedFolderCount > 0
+          deletedFolderCount > 0
             ? intl.formatMessage(
                 {
                   id:
-                    discardOptions.deletedFileCount > 0
+                    deletedFileCount > 0
                       ? "git.fileAction.discardConfirmDeletesFoldersDescription"
                       : "git.fileAction.discardConfirmDeletesFoldersOnlyDescription",
                 },
-                {
-                  fileCount: discardOptions.deletedFileCount,
-                  folderCount: discardOptions.deletedFolderCount,
-                },
+                { fileCount: deletedFileCount, folderCount: deletedFolderCount },
               )
-            : discardOptions.deletedFileCount > 0
+            : deletedFileCount > 0
               ? intl.formatMessage(
                   { id: "git.fileAction.discardConfirmDeletesDescription" },
-                  { count: discardOptions.deletedFileCount },
+                  { count: deletedFileCount },
                 )
               : intl.formatMessage({ id: "git.fileAction.discardConfirmDescription" }),
         confirmLabel: intl.formatMessage({ id: "git.action.discard" }),
@@ -110,8 +109,18 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
       if (!confirmed) {
         return false;
       }
+      // 修复原因：确认文案按确认前的快照计算删除数量；确认期间文件状态变化后，服务端重新规划可能删除确认中未提示的文件。
+      // 修复依据：把确认过的删除路径随请求传给服务端，由服务端在执行前核对，超出时拒绝整个丢弃。
       return await runMutation("discard", paths, () =>
-        gitService.discardPaths({ workspacePath, paths, staged: discardOptions.staged }),
+        gitService.discardPaths({
+          workspacePath,
+          paths,
+          staged: discardOptions.staged,
+          confirmedDeletionPaths: [
+            ...discardOptions.deletedFilePaths,
+            ...discardOptions.deletedFolderPaths,
+          ],
+        }),
       );
     },
     [gitService, intl, requestConfirmation, runMutation, workspacePath],

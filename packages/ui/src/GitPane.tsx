@@ -530,8 +530,8 @@ export function GitPane({
         const deletion = getGitPaneDiscardDeletion(change, currentDataset.id);
         void gitActions.discardPaths([change.path], {
           staged: isGitPaneDiscardStaged(currentDataset.id),
-          deletedFileCount: deletion === "file" ? 1 : 0,
-          deletedFolderCount: deletion === "folder" ? 1 : 0,
+          deletedFilePaths: deletion === "file" ? [change.path] : [],
+          deletedFolderPaths: deletion === "folder" ? [change.path] : [],
         });
       }
     },
@@ -541,8 +541,8 @@ export function GitPane({
   const handleDiscardAll = useCallback(() => {
     void gitActions.discardPaths(bulkActionPlan.discardPaths, {
       staged: isGitPaneDiscardStaged(currentDataset.id),
-      deletedFileCount: bulkActionPlan.discardDeletedFileCount,
-      deletedFolderCount: bulkActionPlan.discardDeletedFolderCount,
+      deletedFilePaths: bulkActionPlan.discardDeletedFilePaths,
+      deletedFolderPaths: bulkActionPlan.discardDeletedFolderPaths,
     });
   }, [bulkActionPlan, currentDataset.id, gitActions]);
 
