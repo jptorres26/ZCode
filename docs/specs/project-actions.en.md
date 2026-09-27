@@ -72,9 +72,10 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
     command is fully visible in the menu and in the terminal, where it can be interrupted.
 - In a read-only workspace the menu is disabled, using the same `readOnlyReason` as the terminal
   button.
-- Logs record only the generated terminal tab id. Action names and commands come from the
-  repository's config and the workspace path contains the user name, so none of them goes into logs
-  that are kept in production.
+- The log written when an action runs records only the generated terminal tab id. Action names and
+  commands come from the repository's config and the workspace path contains the user name, so none
+  of them goes into that log. A failed config read logs only the error kind, since the error text
+  contains the path. The terminal session's own existing logs are outside this spec.
 
 ## Acceptance
 

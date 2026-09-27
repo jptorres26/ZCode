@@ -22,6 +22,15 @@ const VSCODE_EDITOR_IDS = new Set(["vscode", "vscode-insiders"]);
 const stringifyError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/**
+ * 日志用的错误摘要：只含错误码、退出码与信号。execFile/spawn 的错误信息会带上完整命令行
+ * （用户名、远程主机与目录），因此不记录 message；完整信息仍返回给界面展示。
+ */
+const describeLaunchErrorForLog = (error: unknown) => {
+  const { code, signal } = (error ?? {}) as { code?: unknown; signal?: unknown };
+  return { code: code ?? null, signal: signal ?? null };
+};
+
 const execFileAsync = (file: string, args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
     execFile(file, args, (error) => (error ? reject(error) : resolve()));
@@ -156,10 +165,9 @@ async function openVSCodeRemoteSshFolder(
       }
       if (process.platform !== "darwin") {
         // `open -a` 只存在于 macOS；Linux 上它是 openvt 或不存在，回退会执行无关程序并掩盖 VS Code 的真实错误。
-        // 不记录路径与参数：其中含用户名、远程主机与目录。
         logger.warn("[editors] 打开 VS Code 远程工作区失败", {
           editorId,
-          error: stringifyError(error),
+          ...describeLaunchErrorForLog(error),
         });
         return { success: false, error: stringifyError(error) };
       }
@@ -223,10 +231,9 @@ async function openVSCodeRemoteWslFolder(
       }
       if (process.platform !== "darwin") {
         // `open -a` 只存在于 macOS；Linux 上它是 openvt 或不存在，回退会执行无关程序并掩盖 VS Code 的真实错误。
-        // 不记录路径与参数：其中含用户名、远程主机与目录。
         logger.warn("[editors] 打开 VS Code WSL 工作区失败", {
           editorId,
-          error: stringifyError(error),
+          ...describeLaunchErrorForLog(error),
         });
         return { success: false, error: stringifyError(error) };
       }
@@ -397,7 +404,10 @@ export async function openInEditor(
       await launchLinuxEditor(linuxDef, path, pathKind === "file" ? dirname(path) : path);
       return { success: true };
     } catch (error) {
-      logger.warn("[editors] 打开 Linux 编辑器失败", { editorId, error: stringifyError(error) });
+      logger.warn("[editors] 打开 Linux 编辑器失败", {
+        editorId,
+        ...describeLaunchErrorForLog(error),
+      });
       return { success: false, error: stringifyError(error) };
     }
   }

@@ -10,6 +10,10 @@ import { isAbsolute, relative, resolve } from "node:path";
  */
 const TERMINAL_EXIT_WAIT_MS = 5_000;
 
+/** 在删除中的目录下新建终端时的错误信息。 */
+export const TERMINAL_FOLDER_BEING_REMOVED =
+  "Terminal was not started because its folder is being removed";
+
 /** 仍在 create() 中的终端：disposeUnderPath 标记取消并等待其结束。 */
 export interface PendingTerminalCreate {
   cwd: string;
@@ -77,7 +81,8 @@ export async function assertTerminalCwdAllowed(
       blocks.delete(raw);
       continue;
     }
-    throw new Error(`Terminal was not started because '${cwds[0] ?? raw}' is being removed`);
+    // 不带路径：该错误会被终端界面按 error 级别记录，路径含用户名。
+    throw new Error(TERMINAL_FOLDER_BEING_REMOVED);
   }
 }
 

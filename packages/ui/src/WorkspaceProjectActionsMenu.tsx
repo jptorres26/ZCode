@@ -14,7 +14,7 @@ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { getErrorMessage } from "@/lib/errorMessage.js";
+import { getErrorKindForLog } from "@/lib/errorMessage.js";
 import { readWorkspaceConfigFile } from "@/lib/workspaceConfigFile.js";
 import { logger } from "@/logger.js";
 import { WINDOWS_CAPTION_CONTROL_CLASS } from "@/windowCaptionControls.js";
@@ -69,7 +69,7 @@ export function WorkspaceProjectActionsMenu({
           : { status: "ready", config: parseProjectActionsConfig(file.content) };
     } catch (error) {
       logger.warn("[ProjectActions] 读取 .zcode/config.json 失败", {
-        error: getErrorMessage(error),
+        errorKind: getErrorKindForLog(error),
       });
       next = { status: "unreadable" };
     }

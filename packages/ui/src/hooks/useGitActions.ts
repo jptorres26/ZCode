@@ -3,6 +3,7 @@ import { toast } from "@/components/ui/toast.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { getErrorKindForLog } from "@/lib/errorMessage.js";
 import { logger } from "@/logger.js";
 
 type GitPathMutationKind = "stage" | "unstage" | "discard";
@@ -40,7 +41,11 @@ export function useGitActions(options: { workspacePath: string; onSettled: () =>
         return true;
       } catch (error: unknown) {
         const message = getErrorMessage(error);
-        logger.warn(`[GitPane] ${kind} 失败`, { count: paths.length, error: message });
+        // 只记录错误类别：git 的错误信息含文件路径。
+        logger.warn(`[GitPane] ${kind} 失败`, {
+          count: paths.length,
+          errorKind: getErrorKindForLog(error),
+        });
         toast(intl.formatMessage({ id: "git.fileAction.failed" }, { message }), {
           variant: "warning",
         });

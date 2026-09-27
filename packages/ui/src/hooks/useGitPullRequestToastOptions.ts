@@ -3,7 +3,7 @@ import type { ToastOptions } from "@/components/ui/toast.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { getErrorMessage } from "@/lib/errorMessage.js";
+import { getErrorKindForLog } from "@/lib/errorMessage.js";
 import { logger } from "@/logger.js";
 
 /** 带操作按钮的 toast 需要给用户足够时间点击。 */
@@ -37,7 +37,8 @@ export function useGitPullRequestToastOptions(workspacePath: string) {
         variant: "info",
       };
     } catch (error: unknown) {
-      logger.warn("[GitActionMenu] 读取拉取请求链接失败", { error: getErrorMessage(error) });
+      // 只记录错误类别：错误信息可能含远程地址（其中可能带凭据）。
+      logger.warn("[GitActionMenu] 读取拉取请求链接失败", { errorKind: getErrorKindForLog(error) });
       return undefined;
     }
   }, [gitService, intl, platform, workspacePath]);

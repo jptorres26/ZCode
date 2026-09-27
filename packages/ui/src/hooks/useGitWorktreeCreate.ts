@@ -7,7 +7,7 @@ import {
 } from "@/git-branch-switcher/display.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { getErrorMessage } from "@/lib/errorMessage.js";
+import { getErrorKindForLog, getErrorMessage } from "@/lib/errorMessage.js";
 import { logger } from "@/logger.js";
 
 type CreatedWorktree = Extract<GitCreateWorktreeResult, { ok: true }>;
@@ -39,7 +39,7 @@ export function useGitWorktreeCreate(workspacePath: string) {
         return null;
       } catch (error: unknown) {
         const message = getErrorMessage(error);
-        logger.warn("[GitWorktree] 创建 worktree 失败", { error: message });
+        logger.warn("[GitWorktree] 创建 worktree 失败", { errorKind: getErrorKindForLog(error) });
         toast(intl.formatMessage({ id: "git.worktree.error.createFailed" }, { error: message }));
         return null;
       } finally {
