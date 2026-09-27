@@ -364,6 +364,15 @@ export function parseStatusPorcelain(stdout: string): {
   return { branchName, trackingBranchName, headRefType, ahead, behind, entries };
 }
 
+/**
+ * status 条目对应的文件是否已不在工作区：工作区一侧为删除（`Y` 为 D），或已暂存删除且工作区未再出现（`D.`）。
+ * 修复原因：`MD`（index 中已修改、工作区中已删除）的条目 kind 按 index 一侧为 modified，“打开文件”会去读不存在的路径。
+ * 修复依据：按工作区一侧判断，供界面禁用文件预览。
+ */
+export function isMissingInWorkingTree(entry: Pick<GitStatusEntry, "x" | "y">): boolean {
+  return entry.y === "D" || (entry.x === "D" && (entry.y === null || entry.y === "."));
+}
+
 /** gitlink（子模块）的文件模式。 */
 const GITLINK_MODE = "160000";
 

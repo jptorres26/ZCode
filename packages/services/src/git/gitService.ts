@@ -12,6 +12,7 @@ import {
   type GitStatusEntry,
   type GitStatusSnapshot,
 } from "./repo/gitCliRepo.js";
+import { isMissingInWorkingTree } from "./repo/gitCliHelpers.js";
 
 function toAbsolutePath(repoRoot: string, repoRelativePath: string): string {
   return resolve(repoRoot, ...normalizeGitPath(repoRelativePath).split("/"));
@@ -51,6 +52,7 @@ function buildFileChange(
     isUntracked: section === "untracked",
     isConflicted: section === "conflicted",
     ...(entry.isSubmodule ? { isSubmodule: true } : {}),
+    ...(isMissingInWorkingTree(entry) ? { isMissingInWorkingTree: true } : {}),
   };
 }
 
@@ -144,6 +146,7 @@ function toBranchComparisonChange(
     isUntracked: false,
     isConflicted: false,
     ...(change.isSubmodule ? { isSubmodule: true } : {}),
+    ...(change.isMissingInWorkingTree ? { isMissingInWorkingTree: true } : {}),
   };
 }
 

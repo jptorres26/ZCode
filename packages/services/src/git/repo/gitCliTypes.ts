@@ -41,6 +41,7 @@ export interface GitBranchComparisonChange {
   added: number;
   removed: number;
   isSubmodule?: boolean;
+  isMissingInWorkingTree?: boolean;
 }
 
 export interface GitResolvedRepository {
