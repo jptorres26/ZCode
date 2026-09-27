@@ -88,8 +88,9 @@ workspace is not a repository. No actions render for datasets with `readonly ===
   `onOpenCodeViewer` with `{ type: "file", title: <file name>, path: <absolute path> }`, opening
   the working-tree version in the in-app file viewer. It is disabled for deleted files, collapsed
   untracked folders (`dir/`) and submodules (a folder in the working tree; the service sets
-  `isSubmodule` from the `<sub>` field of porcelain v2 status and, for the branch comparison, from mode
-  160000 in `diff --raw`), none of which has a file to preview, and hidden
+  `isSubmodule` when the working-tree mode `<mW>` of porcelain v2 status is 160000 and, for the branch
+  comparison, when the new side in `diff --raw` is; a submodule replaced by a regular file can be
+  previewed), none of which has a file to preview, and hidden
   when the host passes no `onOpenCodeViewer`. It is read-only, so every source offers it.
 - The pane header offers bulk actions to the left of Refresh (`size="lg" variant="ghost"`).
   When the source picker and the action group don't fit on one line, the whole group wraps to
