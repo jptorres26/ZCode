@@ -61,8 +61,11 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
 - On success, `requestV4ComposerDraftWorkspaceTransfer` moves the current draft to the new path, then
   `handleStartDraftInWorkspace(newPath, undefined, "project")` opens it as a draft. On failure the
   dialog stays open and a toast shows the first issue. The dialog can't be closed while creation is
-  running, and a result that arrives after the host component unmounted is ignored, so it never moves
-  the draft or switches workspace late.
+  running. When the component hosting the dialog unmounts while creation runs, or the user switches to
+  another workspace (the component may stay mounted or remount), the result no longer moves the draft,
+  switches workspace or schedules the setup command; a toast says the worktree was created but not
+  opened, with its branch and folder. The dialog belongs to the workspace it was opened in: the branch
+  switcher closes it when the workspace changes.
 - Strings live under `git.worktree.*`, in both `en-US` and `zh-CN`.
 
 ## Deleting a worktree
