@@ -47,6 +47,37 @@ function entryMatchesRequestedPath(entry: GitStatusEntry, requestedPath: string)
   return entry.isUntracked && entry.path.endsWith("/") && requestedPath.startsWith(entry.path);
 }
 
+const GIT_DISCARD_REPLACED_DELETION_ERROR =
+  "Cannot discard a staged deletion while an untracked file exists at the same path. Move or delete it first:";
+
+/** 只有已暂存删除（`D.`）的条目：index 中已没有该路径，工作区中同一路径上的内容是未跟踪的。 */
+function isStagedDeletionOnly(entry: GitStatusEntry): boolean {
+  return !entry.isUntracked && entry.x === "D" && (entry.y === null || entry.y === ".");
+}
+
+/**
+ * 请求路径中，已暂存删除、而工作区同一路径上又有未跟踪内容（重新创建的文件或目录）的路径。
+ * 修复原因：丢弃 staged 的删除用 `git restore --source=HEAD --staged --worktree` 恢复 HEAD 版本，
+ * 会静默覆盖用户在该路径上重新创建的文件；确认文案把删除条目计为不删除任何文件，不会提示这一点。
+ * 修复依据：出现这种冲突时拒绝整个丢弃并列出这些路径，由用户先移走或删除重新创建的内容。
+ */
+function findReplacedStagedDeletions(
+  entries: readonly GitStatusEntry[],
+  requestedPaths: readonly string[],
+): string[] {
+  const untracked = entries
+    .filter((entry) => entry.isUntracked)
+    .map((entry) => entry.path.replace(/\/$/, ""));
+  return entries
+    .filter(
+      (entry) =>
+        isStagedDeletionOnly(entry) &&
+        requestedPaths.some((path) => entryMatchesRequestedPath(entry, path)) &&
+        untracked.some((path) => entry.path === path || entry.path.startsWith(`${path}/`)),
+    )
+    .map((entry) => entry.path);
+}
+
 function pushUnique(target: string[], seen: Set<string>, path: string): void {
   if (!seen.has(path)) {
     seen.add(path);
@@ -231,10 +262,29 @@ export async function discardGitPaths(
   if (plan.conflictedPaths.length > 0) {
     throw new Error(GIT_DISCARD_CONFLICTED_ERROR);
   }
+  if (staged) {
+    const replaced = findReplacedStagedDeletions(entries, context.repoPaths);
+    if (replaced.length > 0) {
+      throw new Error(`${GIT_DISCARD_REPLACED_DELETION_ERROR} ${replaced.join(", ")}`);
+    }
+  }
+  // 修复原因：unstaged 丢弃只恢复工作区；只有已暂存删除的路径在 index 中不存在，交给 `restore --worktree`
+  // 会以 pathspec 不匹配失败，连带同一路径上重新创建的未跟踪文件也无法丢弃。
+  // 修复依据：unstaged 丢弃跳过只匹配到已暂存删除条目的请求路径（它们在工作区一侧没有可恢复的内容）。
+  const trackedPaths = staged
+    ? plan.trackedPaths
+    : plan.trackedPaths.filter((path) =>
+        entries.some(
+          (entry) =>
+            !entry.isUntracked &&
+            !isStagedDeletionOnly(entry) &&
+            entryMatchesRequestedPath(entry, path),
+        ),
+      );
 
-  if (plan.trackedPaths.length > 0) {
+  if (trackedPaths.length > 0) {
     if (!staged) {
-      await runGit(context, "git restore", ["restore", "--worktree", "--", ...plan.trackedPaths]);
+      await runGit(context, "git restore", ["restore", "--worktree", "--", ...trackedPaths]);
     } else if (await hasHeadCommit(context)) {
       await runGit(context, "git restore", [
         "restore",
@@ -242,10 +292,10 @@ export async function discardGitPaths(
         "--staged",
         "--worktree",
         "--",
-        ...plan.trackedPaths,
+        ...trackedPaths,
       ]);
     } else {
-      await runGit(context, "git rm", ["rm", "-f", "-r", "-q", "--", ...plan.trackedPaths]);
+      await runGit(context, "git rm", ["rm", "-f", "-r", "-q", "--", ...trackedPaths]);
     }
   }
 

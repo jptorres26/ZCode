@@ -77,6 +77,12 @@ workspace is not a repository. No actions render for datasets with `readonly ===
     and lists those paths, which the UI shows as a failure.
   - Tracked paths: `staged=false` uses `git restore --worktree`; `staged=true` uses
     `git restore --source=HEAD --staged --worktree`, restoring the original path of a rename too.
+  - A staged deletion (`D.`) with an untracked file or folder re-created at the same path:
+    `staged=true` refuses the whole discard and lists those paths, because restoring the HEAD version
+    would silently overwrite what was re-created, so the user moves or deletes it first. `staged=false`
+    skips paths that only match the staged deletion (the index has no such path, and there is nothing
+    to restore on the working-tree side), deletes only the re-created untracked content, and keeps the
+    staged deletion.
   - With no commit yet and `staged=true`, it uses `git rm -f -r -q -- <paths>` (the new file is
     removed from the index and worktree).
 - Every branch calls the existing `invalidate(workspacePath)` afterwards.
