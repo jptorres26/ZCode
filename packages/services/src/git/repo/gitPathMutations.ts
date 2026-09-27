@@ -100,20 +100,26 @@ async function findReplacedStagedDeletions(
   context: GitPathMutationContext,
   entries: readonly GitStatusEntry[],
 ): Promise<string[]> {
-  const candidates = entries.filter(
-    (entry) =>
-      isStagedDeletionOnly(entry) &&
-      context.repoPaths.some((path) => entryMatchesRequestedPath(entry, path)),
-  );
+  const requested = (entry: GitStatusEntry) =>
+    context.repoPaths.some((path) => entryMatchesRequestedPath(entry, path));
+  // 修复原因：已暂存的重命名 old → new 丢弃时也会把 old 恢复为 HEAD 版本；用户在 old 上重新创建的内容
+  // （未跟踪或被忽略）同样会被静默覆盖，而 status 里它是 `R.` 条目加 `? old`，不是 `D.`。
+  // 修复依据：请求的重命名条目（`R`）的原路径与已暂存删除的路径一样，先检查工作区中是否已有内容。
+  const candidates = new Set<string>();
+  for (const entry of entries) {
+    if (!requested(entry)) continue;
+    if (isStagedDeletionOnly(entry)) candidates.add(entry.path);
+    if (entry.x === "R" && entry.originalPath) candidates.add(entry.originalPath);
+  }
   const present = await Promise.all(
-    candidates.map((entry) =>
-      lstat(join(context.repoRoot, ...entry.path.split("/"))).then(
-        () => true,
-        () => false,
+    [...candidates].map((path) =>
+      lstat(join(context.repoRoot, ...path.split("/"))).then(
+        () => path,
+        () => null,
       ),
     ),
   );
-  return candidates.filter((_, index) => present[index]).map((entry) => entry.path);
+  return present.filter((path): path is string => path !== null);
 }
 
 function pushUnique(target: string[], seen: Set<string>, path: string): void {

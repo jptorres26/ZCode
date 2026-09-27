@@ -89,7 +89,9 @@ workspace is not a repository. No actions render for datasets with `readonly ===
     folder or link, including one `.gitignore` ignores, such as a tracked `.env`): `staged=true`
     refuses the whole discard and lists those paths (it checks whether the path exists in the working
     tree rather than relying on status), because restoring the HEAD version would silently overwrite
-    what was re-created, so the user moves or deletes it first. `staged=false`
+    what was re-created, so the user moves or deletes it first. The original path of a requested staged
+    rename (`R`) is checked the same way: discarding the rename restores the original path from HEAD,
+    and status shows that case as an `R.` entry plus `? <original>`, not `D.`. `staged=false`
     skips paths that only match the staged deletion (the index has no such path, and there is nothing
     to restore on the working-tree side), deletes only the re-created untracked content, and keeps the
     staged deletion.
