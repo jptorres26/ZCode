@@ -67,8 +67,10 @@ test("a branch pushed to a fork links to the fork with the pushed branch", async
     await git(dir, "checkout", "-q", "-b", "fix-typo");
     await git(dir, "config", "branch.fix-typo.remote", "origin");
     await git(dir, "config", "branch.fix-typo.merge", "refs/heads/main");
-    // 只看上游时来源分支是 main，与默认分支相同，没有链接
+    // push.default=upstream 时推送到上游分支 main，与默认分支相同，没有链接
+    await git(dir, "config", "push.default", "upstream");
     assert.equal(await createGitCliRepo().getPullRequestLink(dir), null);
+    await git(dir, "config", "--unset", "push.default");
 
     await git(dir, "config", "remote.pushDefault", "fork");
     const expected = {
@@ -99,6 +101,25 @@ test("a remote with a separate push URL links to the repository pushed to", asyn
       (await createGitCliRepo().getPullRequestLink(dir))?.url,
       "https://github.com/me/demo/compare/main...feature/login?expand=1",
     );
+  });
+});
+
+test("push.default decides whether the upstream branch or the same-named branch was pushed", async () => {
+  await withRepo(async (dir) => {
+    const head = (await git(dir, "rev-parse", "HEAD")).trim();
+    await git(dir, "update-ref", "refs/remotes/origin/main", head);
+    await git(dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+    await git(dir, "checkout", "-q", "-b", "feature");
+    await git(dir, "config", "branch.feature.remote", "origin");
+    await git(dir, "config", "branch.feature.merge", "refs/heads/review-topic");
+    const headBranch = async () => (await createGitCliRepo().getPullRequestLink(dir))?.headBranch;
+
+    await git(dir, "config", "push.default", "current");
+    assert.equal(await headBranch(), "feature");
+    await git(dir, "config", "push.default", "upstream");
+    assert.equal(await headBranch(), "review-topic");
+    await git(dir, "config", "push.default", "tracking");
+    assert.equal(await headBranch(), "review-topic");
   });
 });
 
