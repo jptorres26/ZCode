@@ -16,12 +16,13 @@ import { registerMemoryDiagnosticsProvider } from "#src/memoryDiagnostics.js";
 import {
   assertTerminalCwdAllowed,
   disposeTerminalsUnderPath,
+  type ExitingTerminals,
   type PendingTerminalCreate,
   registerPendingTerminalCreate,
+  rejectCancelledTerminalCreate,
   releaseTerminalPathBlock,
-  TERMINAL_FOLDER_BEING_REMOVED,
   type TerminalPathBlocks,
-  waitForExitBounded,
+  trackTerminalUntilExited,
 } from "./terminalDisposal.js";
 
 const require = createRequire(import.meta.url);
@@ -340,6 +341,7 @@ export function createTerminalService(dependencies: {
 }): ITerminalService {
   const terminals = new Map<string, TerminalInstance>();
   const pendingCreates = new Set<PendingTerminalCreate>();
+  const exitingTerminals: ExitingTerminals = new Map();
   const pathBlocks: TerminalPathBlocks = new Map();
   let nextId = 0;
   // 内存诊断计数器：客户端断连不回收 pty 时
@@ -361,6 +363,7 @@ export function createTerminalService(dependencies: {
     }
 
     terminal.pty.kill();
+    trackTerminalUntilExited(exitingTerminals, id, terminal);
     terminal.dataEmitter.dispose();
     terminal.exitEmitter.dispose();
     terminals.delete(id);
@@ -429,12 +432,11 @@ export function createTerminalService(dependencies: {
           terminals.delete(id);
         });
 
+        const entry = { pty: p, dataEmitter, exitEmitter, cwd: realCwd, exited };
         if (pending.cancelled) {
-          p.kill();
-          await waitForExitBounded(exited);
-          throw new Error(TERMINAL_FOLDER_BEING_REMOVED);
+          await rejectCancelledTerminalCreate(pending, exitingTerminals, id, entry);
         }
-        terminals.set(id, { pty: p, dataEmitter, exitEmitter, cwd: realCwd, exited });
+        terminals.set(id, entry);
         return {
           id,
           shell,
@@ -467,6 +469,7 @@ export function createTerminalService(dependencies: {
         pendingCreates,
         terminals,
         cleanupTerminal,
+        exiting: exitingTerminals,
         blocks: pathBlocks,
       });
     },
