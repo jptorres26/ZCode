@@ -1005,6 +1005,8 @@ const enUS: Record<string, string> = {
     "Couldn't stop the tasks and terminals running in {path}, so nothing was deleted. The folder and the branch {branchName} are kept. Retry to stop them and delete the worktree.",
   "git.worktree.delete.leftoverChanged":
     "The folder at {path} changed since the delete failed, so it wasn't removed. The branch {branchName} is kept.",
+  "git.worktree.delete.changed":
+    "The worktree at {path} is no longer the one you confirmed, so nothing was deleted.",
   "git.worktree.delete.otherEntriesOpen":
     "This worktree is also open as another project. Close it first: {names}",
   "git.worktree.delete.dirtyAfterRelease":

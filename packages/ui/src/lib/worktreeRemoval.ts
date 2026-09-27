@@ -27,7 +27,12 @@ export interface WorktreeRemovalParams {
   workspacePath: string;
   worktreePath: string;
   branchName: string;
+  /** 用户已同意丢弃未提交改动。 */
   force: boolean;
+  /** 用户已同意删除被 Git 忽略的文件。 */
+  discardIgnored: boolean;
+  /** 用户确认时的 worktree 身份。 */
+  expectedInstanceId: string;
 }
 
 /** 删除步骤：删除 worktree，或清理 git 已撤销登记后的剩余目录（带失败时记录的目录身份）。 */
@@ -88,14 +93,15 @@ export async function removeManagedWorktree(
 }
 
 /**
- * - dirty：确认后又出现了未提交改动，用户未同意丢弃，提供“仍然删除”（force）。
+ * - dirty：确认后又出现了未提交改动或被忽略的文件，用户未同意丢弃，提供“仍然删除”（两类都同意）。
+ * - changed：该路径上已不是用户确认的那个 worktree，不删除也不提供重试。
  * - leftover：git 已撤销登记但目录未删净，重试改为清理剩余目录。
  * - 其它失败：重试同一删除。
  */
 async function removeWorktree(params: WorktreeRemovalParams): Promise<void> {
-  const { gitService, workspacePath, force, intl } = params;
+  const { gitService, workspacePath, force, discardIgnored, expectedInstanceId, intl } = params;
   const result: GitRemoveWorktreeResult = await gitService
-    .removeWorktree({ workspacePath, force })
+    .removeWorktree({ workspacePath, force, discardIgnored, expectedInstanceId })
     .catch((error: unknown) => ({
       ok: false as const,
       reason: "failed" as const,
@@ -104,6 +110,14 @@ async function removeWorktree(params: WorktreeRemovalParams): Promise<void> {
   if (result.ok) {
     params.notify(
       intl.formatMessage({ id: "git.worktree.delete.done" }, { branchName: params.branchName }),
+    );
+    return;
+  }
+  if (result.reason === "changed") {
+    logger.warn("[WorktreeDeletion] worktree 已变化，未删除");
+    params.notify(
+      intl.formatMessage({ id: "git.worktree.delete.changed" }, { path: params.worktreePath }),
+      { variant: "warning", durationMs: 15_000 },
     );
     return;
   }
@@ -118,7 +132,7 @@ async function removeWorktree(params: WorktreeRemovalParams): Promise<void> {
         durationMs: 15_000,
         actionLabel: intl.formatMessage({ id: "git.worktree.delete.forceConfirm" }),
         onAction: () => {
-          void removeManagedWorktree({ ...params, force: true });
+          void removeManagedWorktree({ ...params, force: true, discardIgnored: true });
         },
       },
     );

@@ -69,7 +69,8 @@ worktreePath }`) is written to that worktree's own Git admin folder (`git rev-pa
     If writing fails, the worktree still works but gets no delete entry. Reading requires the marker to
     exist, `createdBy` to be `zcode`, and the real path of `worktreePath` to match the current checkout.
 - `IGitService.getManagedWorktree({ workspacePath })` returns `{ worktreePath, mainWorktreePath,
-branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold, otherwise `null`
+branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }` when those conditions hold, otherwise
+  `null` (`instanceId` is the worktree folder's device, inode and birth time)
   (the main checkout and branch come from `git worktree list --porcelain`; it runs
   `git status --porcelain --untracked-files=normal --ignored`: `hasUncommittedChanges` says whether
   there were changes, including untracked files, and counts as true if that read fails;
@@ -77,8 +78,12 @@ branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold
   dependencies), which are deleted with the worktree).
 - `IGitService.removeWorktree({ workspacePath, force? })`:
   - Conditions not met → `{ ok: false, reason: "not-managed" }`.
-  - Without `force`, uncommitted changes or files Git ignores → `{ ok: false, reason: "dirty" }`, and
-    nothing is deleted (an unforced `git worktree remove` still deletes ignored files).
+  - The request carries `force` (the user agreed to lose uncommitted changes), `discardIgnored` (agreed
+    to lose files Git ignores) and `expectedInstanceId` (the `instanceId` at confirmation). A different
+    `instanceId` → `{ ok: false, reason: "changed" }`, and nothing is deleted (another worktree took
+    its path during the confirmation). Uncommitted changes without `force`, or ignored files without
+    `discardIgnored` → `{ ok: false, reason: "dirty" }`, and nothing is deleted (an unforced
+    `git worktree remove` still deletes ignored files). `--force` is passed only with `force`.
   - Runs `git worktree remove [--force] <worktreePath>` in the main checkout. On failure it checks the
     registration again: still registered → `{ ok: false, reason: "failed", detail }`; registration gone
     (when deleting the folder fails midway, git may already have removed the admin folder, typically
@@ -120,7 +125,8 @@ branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold
   and compares those, which covers entries opened through a symlink or junction, including aliases of
   a subfolder of the worktree; if that still doesn't match, for example for an alias realpath doesn't
   see through such as a bind mount, or when resolving fails, the entry's own managed worktree
-  (`getManagedWorktree`) is compared). Otherwise the other entry's
+  (`getManagedWorktree`) is compared; if neither can be determined, for example because the Host or git
+  failed, the entry counts as inside and deletion is refused). Otherwise the other entry's
   Agent keeps running inside the worktree and removal fails or deletes a checkout that an unconfirmed
   workspace is using.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
@@ -131,8 +137,11 @@ branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold
   3. It calls `getManagedWorktree` again for the current state. With uncommitted changes, a second
      confirmation says they will be lost for good, and confirming deletes with `force`. Files Git
      ignores get the same kind of confirmation (it says local settings, installed dependencies and so on
-     are deleted for good; with uncommitted changes too, it is one combined confirmation), and confirming
-     deletes with `force` as well. **Every
+     are deleted for good; with uncommitted changes too, it is one combined confirmation). A
+     confirmation covers only what existed then: uncommitted changes map to `force` and ignored files to
+     `discardIgnored`, so the other kind appearing later returns `dirty`. The `instanceId` of this read
+     must match the one from when the menu opened; otherwise it says the worktree is no longer the one
+     confirmed and stops. **Every
      confirmation happens before anything is released**, so cancelling at any step has no effect.
      The steps after the confirmations run in `removeManagedWorktree`
      (`packages/ui/src/lib/worktreeRemoval.ts`), which doesn't depend on React because the sidebar row

@@ -332,7 +332,11 @@ export function createGitService(options?: {
     },
 
     async removeWorktree(params) {
-      return await repo.removeWorktree(params.workspacePath, params.force === true);
+      return await repo.removeWorktree(params.workspacePath, {
+        force: params.force === true,
+        discardIgnored: params.discardIgnored === true,
+        expectedInstanceId: params.expectedInstanceId,
+      });
     },
 
     async removeWorktreeLeftover(params) {

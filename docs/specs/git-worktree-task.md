@@ -52,14 +52,18 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
     该目录不属于仓库内容，克隆或检出无法伪造；`git worktree remove`/`prune` 时随之删除。写入失败时 worktree 仍可用，
     只是不提供删除入口。读取时要求标记存在、`createdBy` 为 `zcode` 且 `worktreePath` 的真实路径与当前检出一致。
 - `IGitService.getManagedWorktree({ workspacePath })`：满足上述条件时返回
-  `{ worktreePath, mainWorktreePath, branchName, hasUncommittedChanges, hasIgnoredFiles }`，否则 `null`（主检出与
+  `{ worktreePath, mainWorktreePath, branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }`，否则 `null`
+  （`instanceId` 为该 worktree 目录的设备号、inode 与创建时间；主检出与
   分支名取自 `git worktree list --porcelain`；读取时执行 `git status --porcelain --untracked-files=normal --ignored`：
   `hasUncommittedChanges` 为是否有改动（含未跟踪文件），读取失败按有改动处理；`hasIgnoredFiles` 为是否有被 Git
   忽略的文件（`!! ` 条目，如 `.env`、安装的依赖），它们会随 worktree 一起删除）。
 - `IGitService.removeWorktree({ workspacePath, force? })`：
   - 不满足条件 → `{ ok: false, reason: "not-managed" }`；
-  - 未指定 `force` 且有未提交改动或被 Git 忽略的文件 → `{ ok: false, reason: "dirty" }`，不删除（未带 `force` 的
-    `git worktree remove` 仍会删除被忽略的文件）；
+  - 请求带 `force`（同意丢弃未提交改动）、`discardIgnored`（同意删除被 Git 忽略的文件）与 `expectedInstanceId`
+    （确认时的 `instanceId`）。`instanceId` 与之不同 → `{ ok: false, reason: "changed" }`，不删除（确认期间同一路径上
+    已换成另一个 worktree）；有未提交改动而未带 `force`、或有被忽略的文件而未带 `discardIgnored` →
+    `{ ok: false, reason: "dirty" }`，不删除（未带 `--force` 的 `git worktree remove` 仍会删除被忽略的文件）；
+    只有 `force` 时才带 `--force`；
   - 在主检出中执行 `git worktree remove [--force] <worktreePath>`；失败时再查登记：仍登记 →
     `{ ok: false, reason: "failed", detail }`；登记已消失（目录删除中途失败时 git 可能已删掉管理目录，常见于 Windows
     目录占用）→ `{ ok: false, reason: "leftover", leftoverId, detail }`，`leftoverId` 为此时该目录（不跟随链接）的
@@ -83,14 +87,16 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
 - 前提：若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前、释放前
   以及 toast 中每次重试前各检查一次；路径字符串不匹配时由本地 Host 解析两边的真实路径（`IFileService.resolvePath`，
   worktree 路径只解析一次）再比较，覆盖经符号链接或 junction 打开的入口，包括指向 worktree 内子目录的别名；仍不匹配时
-  （如 bind mount 这类 realpath 识别不了的别名，或解析失败）再按该入口所在的 worktree（`getManagedWorktree`）比较）；否则其它入口的
+  （如 bind mount 这类 realpath 识别不了的别名，或解析失败）再按该入口所在的 worktree（`getManagedWorktree`）比较；两者都无法判断时（如 Host 或 Git 出错）按在其中处理，
+  拒绝删除）；否则其它入口的
   Agent 仍在 worktree 内运行，删除会失败或删掉未确认的活动检出。
 - 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
   2. 破坏性确认：说明将删除的目录、保留的分支；
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以
      `force` 删除。有被 Git 忽略的文件时同样先确认（文案说明本地配置、安装的依赖等会被永久删除；与未提交改动同时
-     存在时合并为一次确认），确认后同样以 `force` 删除。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
+     存在时合并为一次确认）。确认只针对当时存在的内容：未提交改动对应 `force`，被忽略的文件对应 `discardIgnored`，
+     之后才出现的另一类内容返回 `dirty`。这次读取的 `instanceId` 必须与菜单打开时相同，否则提示已不是确认的 worktree 并结束。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
      确认之后的步骤由 `packages/ui/src/lib/worktreeRemoval.ts` 的 `removeManagedWorktree` 执行（不依赖 React，
      侧栏行关闭入口后即卸载）。**每次尝试都完整执行 4–6**，包括 toast 中的每次重试：先检查其它入口，再结束终端、
      释放 runtime、删除、解除封锁。这些调用都可重复（关闭已关闭的入口为空操作，没有运行中的 runtime 时释放为空操作）。

@@ -109,7 +109,10 @@ export interface GitCliRepo {
   getPullRequestLink(workspacePath: string): Promise<GitPullRequestLink | null>;
   createWorktree(workspacePath: string, branchName: string): Promise<GitCreateWorktreeResult>;
   getManagedWorktree(workspacePath: string): Promise<GitManagedWorktree | null>;
-  removeWorktree(workspacePath: string, force: boolean): Promise<GitRemoveWorktreeResult>;
+  removeWorktree(
+    workspacePath: string,
+    options: { force: boolean; discardIgnored?: boolean; expectedInstanceId?: string },
+  ): Promise<GitRemoveWorktreeResult>;
   removeWorktreeLeftover(
     worktreePath: string,
     leftoverId: string,
