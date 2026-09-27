@@ -589,3 +589,35 @@ test("ignored files inside an initialized submodule need consent before removal"
     assert.ok(await exists(join(wt, "sm", "cache")));
   });
 });
+
+test("files inside an uninitialized submodule folder count as uncommitted changes", async () => {
+  await withRepo(async (repo, worktreesRootDir) => {
+    const sub = join(repo, "..", "sub");
+    await mkdir(sub);
+    await git(sub, "-c", "init.defaultBranch=main", "init", "-q");
+    await writeFile(join(sub, "f.txt"), "f\n");
+    await git(sub, "add", ".");
+    await git(sub, "-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-q", "-m", "sub");
+    await git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sm");
+    await git(repo, "commit", "-q", "-m", "add submodule");
+    // 新 worktree 不会初始化子模块：sm/ 是空目录
+    const gitRepo = createGitCliRepo({ worktreesRootDir });
+    const created = await gitRepo.createWorktree(repo, "uninit-sub");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const clean = await gitRepo.getManagedWorktree(created.worktreePath);
+    assert.equal(clean?.hasUncommittedChanges, false);
+    // 未初始化子模块目录里的本地文件：两条 status 都不报告，不带 --force 的删除也会删掉
+    await mkdir(join(created.worktreePath, "sm", "cache"), { recursive: true });
+    await writeFile(join(created.worktreePath, "sm", "cache", "x"), "local\n");
+    assert.equal(
+      (await gitRepo.getManagedWorktree(created.worktreePath))?.hasUncommittedChanges,
+      true,
+    );
+    assert.deepEqual(await gitRepo.removeWorktree(created.worktreePath, { force: false }), {
+      ok: false,
+      reason: "dirty",
+    });
+    assert.ok(await exists(join(created.worktreePath, "sm", "cache", "x")));
+  });
+});
