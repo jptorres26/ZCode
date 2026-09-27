@@ -101,7 +101,7 @@ export function useManagedWorktreeDeletion(options: {
     if (!confirmed) {
       return;
     }
-    let force: boolean;
+    let hasChanges: boolean;
     let hasIgnoredFiles: boolean;
     try {
       // 所有确认都在释放 runtime 之前完成：按删除前一刻的状态决定是否需要“丢弃改动”确认。
@@ -110,7 +110,7 @@ export function useManagedWorktreeDeletion(options: {
         toast(intl.formatMessage({ id: "git.worktree.delete.failed" }, { error: "not-managed" }));
         return;
       }
-      force = current.hasUncommittedChanges;
+      hasChanges = current.hasUncommittedChanges;
       hasIgnoredFiles = current.hasIgnoredFiles;
     } catch (error: unknown) {
       logger.warn("[WorktreeDeletion] 读取 worktree 状态失败", {
@@ -122,15 +122,17 @@ export function useManagedWorktreeDeletion(options: {
       return;
     }
     // 修复原因：只有被 Git 忽略的文件时也会随 worktree 一起永久删除，以前不需要额外确认。
-    // 修复依据：有未提交改动或被忽略的文件时都先确认，文案说明会丢失哪些内容。
+    // 修复依据：有未提交改动或被忽略的文件时都先确认，文案说明会丢失哪些内容；确认即表示同意丢失，以 force 删除
+    // （删除服务在未带 force 时，对确认之后才出现的改动或被忽略的文件返回 dirty）。
+    const force = hasChanges || hasIgnoredFiles;
     if (
-      (force || hasIgnoredFiles) &&
+      force &&
       !(await confirmDialog({
         title: intl.formatMessage({
-          id: force ? "git.worktree.delete.dirtyTitle" : "git.worktree.delete.ignoredTitle",
+          id: hasChanges ? "git.worktree.delete.dirtyTitle" : "git.worktree.delete.ignoredTitle",
         }),
         description: intl.formatMessage({
-          id: !force
+          id: !hasChanges
             ? "git.worktree.delete.ignoredDescription"
             : hasIgnoredFiles
               ? "git.worktree.delete.dirtyWithIgnoredDescription"
