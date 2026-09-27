@@ -47,8 +47,9 @@ branch dialog, workspace opening and draft transfer, and adds one Git service me
    sometimes a half-made folder registered as locked) stays, and retrying the same input fails with
    "branch already exists". The rollback runs `git worktree prune`; if the target folder is still
    registered, `git worktree remove --force --force` deletes it (the attempt created it; it didn't exist
-   before); and if the branch didn't exist before the attempt, isn't checked out in any worktree and
-   still points at the starting commit, `git update-ref -d refs/heads/<branch> <commit>` deletes it. The
+   before); and if the branch was confirmed missing before the attempt (`rev-parse --verify --quiet`
+   exited 1 with no output; a lookup that timed out or failed can't tell, so the branch is left alone),
+   isn't checked out in any worktree and still points at the starting commit, `git update-ref -d refs/heads/<branch> <commit>` deletes it. The
    rollback is best effort, and the original issues are returned either way. On success, invalidate the
    original workspace's cache.
 

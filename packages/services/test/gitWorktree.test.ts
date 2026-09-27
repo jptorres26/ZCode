@@ -516,3 +516,31 @@ test("a failed worktree add is rolled back so the same branch name can be retrie
     if (created.ok) assert.equal(created.worktreePath, slugDir);
   });
 });
+
+test("a failed branch lookup never lets the rollback delete an existing branch", async () => {
+  const { createGitCommandProvider } = await import("../src/git/providers/gitCommandProvider.js");
+  const { addGitWorktree } = await import("../src/git/repo/gitWorktree.js");
+  await withRepo(async (repo, worktreesRootDir) => {
+    // 已有分支指向 HEAD 且未检出；分支查询超时，看起来像“不存在”
+    await git(repo, "branch", "idle");
+    const real = createGitCommandProvider();
+    const commandProvider = {
+      resolveGitBinary: () => real.resolveGitBinary(),
+      async run(options: Parameters<typeof real.run>[0]) {
+        const result = await real.run(options);
+        return options.args[0] === "rev-parse" && options.args.includes("refs/heads/idle^{commit}")
+          ? { ...result, exitCode: null, timedOut: true, stdout: "" }
+          : result;
+      },
+    };
+    const result = await addGitWorktree({
+      commandProvider,
+      repoRoot: repo,
+      workspaceInRepoPath: ".",
+      branchName: "idle",
+      worktreesRootDir,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(await git(repo, "branch", "--list", "idle"), "idle");
+  });
+});
