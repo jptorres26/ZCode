@@ -77,7 +77,8 @@ branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold
   dependencies), which are deleted with the worktree).
 - `IGitService.removeWorktree({ workspacePath, force? })`:
   - Conditions not met → `{ ok: false, reason: "not-managed" }`.
-  - Without `force`, uncommitted changes → `{ ok: false, reason: "dirty" }`, and nothing is deleted.
+  - Without `force`, uncommitted changes or files Git ignores → `{ ok: false, reason: "dirty" }`, and
+    nothing is deleted (an unforced `git worktree remove` still deletes ignored files).
   - Runs `git worktree remove [--force] <worktreePath>` in the main checkout. On failure it checks the
     registration again: still registered → `{ ok: false, reason: "failed", detail }`; registration gone
     (when deleting the folder fails midway, git may already have removed the admin folder, typically
@@ -130,8 +131,8 @@ branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold
   3. It calls `getManagedWorktree` again for the current state. With uncommitted changes, a second
      confirmation says they will be lost for good, and confirming deletes with `force`. Files Git
      ignores get the same kind of confirmation (it says local settings, installed dependencies and so on
-     are deleted for good; with uncommitted changes too, it is one combined confirmation); ignored files
-     alone don't need `force`. **Every
+     are deleted for good; with uncommitted changes too, it is one combined confirmation), and confirming
+     deletes with `force` as well. **Every
      confirmation happens before anything is released**, so cancelling at any step has no effect.
      The steps after the confirmations run in `removeManagedWorktree`
      (`packages/ui/src/lib/worktreeRemoval.ts`), which doesn't depend on React because the sidebar row
@@ -161,7 +162,8 @@ branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold
   6. Outcomes (except when ending the terminals failed, the sidebar row has unmounted by now, so
      follow-up confirmations and retries are toast actions the user clicks; there is no timed retry):
      - Success: says the branch was kept.
-     - `dirty` (changes appeared after the confirmation, which the user didn't agree to discard): says
+     - `dirty` (changes or ignored files appeared after the confirmation, which the user didn't agree to
+       discard): says
        nothing was deleted and offers "Delete anyway", which makes a new attempt with `force`.
      - `leftover`: says the folder couldn't be fully deleted and the branch is kept; the removal step
        of "Retry" is `removeWorktreeLeftover`. If that returns `not-leftover` (the folder changed), it

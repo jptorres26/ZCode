@@ -936,7 +936,7 @@ const zhCN: Record<string, string> = {
     "{path} 处的目录在删除失败后已发生变化，因此没有删除。分支 {branchName} 已保留。",
   "git.worktree.delete.otherEntriesOpen": "这个 worktree 还作为其它项目打开着，请先关闭：{names}",
   "git.worktree.delete.dirtyAfterRelease":
-    "确认后 {path} 中出现了新的未提交改动，因此没有删除。项目已从侧栏移除，分支 {branchName} 已保留。",
+    "确认后 {path} 中出现了新的未提交改动或被 Git 忽略的文件，因此没有删除。项目已从侧栏移除，分支 {branchName} 已保留。",
   "git.worktree.delete.retry": "重试",
   "git.worktree.createAction": "在新 worktree 中开始...",
   "git.worktree.dialog.title": "在新 worktree 中开始",

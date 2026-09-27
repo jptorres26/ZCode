@@ -58,7 +58,8 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   忽略的文件（`!! ` 条目，如 `.env`、安装的依赖），它们会随 worktree 一起删除）。
 - `IGitService.removeWorktree({ workspacePath, force? })`：
   - 不满足条件 → `{ ok: false, reason: "not-managed" }`；
-  - 未指定 `force` 且有未提交改动 → `{ ok: false, reason: "dirty" }`，不删除；
+  - 未指定 `force` 且有未提交改动或被 Git 忽略的文件 → `{ ok: false, reason: "dirty" }`，不删除（未带 `force` 的
+    `git worktree remove` 仍会删除被忽略的文件）；
   - 在主检出中执行 `git worktree remove [--force] <worktreePath>`；失败时再查登记：仍登记 →
     `{ ok: false, reason: "failed", detail }`；登记已消失（目录删除中途失败时 git 可能已删掉管理目录，常见于 Windows
     目录占用）→ `{ ok: false, reason: "leftover", leftoverId, detail }`，`leftoverId` 为此时该目录（不跟随链接）的
@@ -89,7 +90,7 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   2. 破坏性确认：说明将删除的目录、保留的分支；
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以
      `force` 删除。有被 Git 忽略的文件时同样先确认（文案说明本地配置、安装的依赖等会被永久删除；与未提交改动同时
-     存在时合并为一次确认）；只有被忽略的文件时不需要 `force`。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
+     存在时合并为一次确认），确认后同样以 `force` 删除。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
      确认之后的步骤由 `packages/ui/src/lib/worktreeRemoval.ts` 的 `removeManagedWorktree` 执行（不依赖 React，
      侧栏行关闭入口后即卸载）。**每次尝试都完整执行 4–6**，包括 toast 中的每次重试：先检查其它入口，再结束终端、
      释放 runtime、删除、解除封锁。这些调用都可重复（关闭已关闭的入口为空操作，没有运行中的 runtime 时释放为空操作）。
@@ -106,7 +107,7 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
      cwd 的 Agent/终端进程会占用目录，先删除会失败，甚至只删掉一部分文件。
   6. 结果（除结束终端失败外，侧栏行此时已卸载；后续确认与重试都通过 toast 操作完成，由用户触发，不做定时重试）：
      - 成功：提示分支已保留；
-     - `dirty`（确认之后又出现了改动，用户没有同意丢弃）：提示未删除，提供“仍然删除”（以 `force` 重新尝试）；
+     - `dirty`（确认之后又出现了改动或被忽略的文件，用户没有同意丢弃）：提示未删除，提供“仍然删除”（以 `force` 重新尝试）；
      - `leftover`：提示目录未能完全删除、分支已保留，“重试”的删除步骤改为 `removeWorktreeLeftover`；清理返回
        `not-leftover`（目录已变化）时提示未删除，不再提供重试；
      - 其它失败（git 未删除任何内容，如 worktree 被锁定）：提示目录与分支都已保留，“重试”重新尝试 `removeWorktree`。

@@ -1008,7 +1008,7 @@ const enUS: Record<string, string> = {
   "git.worktree.delete.otherEntriesOpen":
     "This worktree is also open as another project. Close it first: {names}",
   "git.worktree.delete.dirtyAfterRelease":
-    "New uncommitted changes appeared in {path} after you confirmed, so it wasn't deleted. The project was removed from the sidebar and the branch {branchName} is kept.",
+    "New uncommitted changes or files Git ignores appeared in {path} after you confirmed, so it wasn't deleted. The project was removed from the sidebar and the branch {branchName} is kept.",
   "git.worktree.delete.retry": "Retry",
   "git.worktree.createAction": "Start in new worktree...",
   "git.worktree.dialog.title": "Start in a new worktree",

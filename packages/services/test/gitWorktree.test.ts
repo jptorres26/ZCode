@@ -219,6 +219,17 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
     const withIgnored = await gitRepo.getManagedWorktree(created.workspacePath);
     assert.equal(withIgnored?.hasUncommittedChanges, false);
     assert.equal(withIgnored?.hasIgnoredFiles, true);
+    // 未带 force（用户未同意丢失）时不删除被忽略的文件
+    assert.deepEqual(await gitRepo.removeWorktree(created.workspacePath, false), {
+      ok: false,
+      reason: "dirty",
+    });
+    assert.equal(
+      await readFile(join(created.worktreePath, ".env.local"), "utf-8"),
+      "TOKEN=local\n",
+    );
+    const removed = await gitRepo.removeWorktree(created.workspacePath, true);
+    assert.equal(removed.ok, true);
   });
 });
 

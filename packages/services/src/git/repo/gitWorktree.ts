@@ -276,7 +276,9 @@ export async function removeManagedWorktree(context: {
   if (!worktree) {
     return { ok: false, reason: "not-managed" };
   }
-  if (!context.force && worktree.hasUncommittedChanges) {
+  // 修复原因：未带 force 的 git worktree remove 仍会删除被忽略的文件；确认之后才生成的 .env、数据库或构建产物
+  // 会被静默删除。修复依据：未带 force（用户未同意丢失）时，被忽略的文件与未提交改动一样返回 dirty。
+  if (!context.force && (worktree.hasUncommittedChanges || worktree.hasIgnoredFiles)) {
     return { ok: false, reason: "dirty" };
   }
   // 在主检出中执行，避免在待删除目录内运行；路径为 git 自身给出的绝对路径，不会被当成选项。
