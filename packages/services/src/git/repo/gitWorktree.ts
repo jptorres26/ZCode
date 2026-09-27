@@ -15,6 +15,7 @@ import type { GitCommandProvider } from "../providers/gitCommandProvider.js";
 import { isRelativePathInside } from "../../fs/pathContainment.js";
 import { parseGitBranchMutationIssues } from "./gitCliHelpers.js";
 import { parseWorktreeList, realpathOrSelf } from "./gitWorktreeList.js";
+import { readWorktreeContent } from "./gitWorktreeContent.js";
 import { readCommit, rollBackFailedWorktreeAdd } from "./gitWorktreeRollback.js";
 
 /** worktree add 会检出整棵树，大仓库远超普通 Git 命令的 15s。 */
@@ -240,46 +241,15 @@ export async function readManagedWorktree(context: {
   if (!(await hasManagedWorktreeMarker(context.commandProvider, current.path, worktreeRoot))) {
     return null;
   }
-  // 修复原因：只有被忽略的文件（如 .env、安装的依赖）时 status 没有输出，界面跳过“永久丢失”确认，
-  // 而 git worktree remove 会连同这些文件一起删除。修复依据：带 --ignored 读取，被忽略的条目（`!! `）单独报告。
-  const status = await context.commandProvider.run({
-    cwd: current.path,
-    args: ["status", "--porcelain", "--untracked-files=normal", "--ignored"],
-    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-    maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
-  });
-  // 修复原因：顶层的 status --ignored 不进入子模块，已初始化子模块里被忽略的文件（如 sm/cache）不会报告；
-  // 用户只同意丢弃未提交改动时，带 --force 的删除会连同它们一起删掉。
-  // 修复依据：在每个已初始化的子模块（递归）里执行同样的 status，结果与顶层合并。
-  const submoduleStatus = await context.commandProvider.run({
-    cwd: current.path,
-    args: [
-      "submodule",
-      "foreach",
-      "--quiet",
-      "--recursive",
-      "git status --porcelain --untracked-files=normal --ignored",
-    ],
-    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-    maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
-  });
-  const lines = `${status.stdout}\n${submoduleStatus.stdout}`
-    .split("\n")
-    .filter((line) => line.length > 0);
+  const content = await readWorktreeContent(context.commandProvider, current.path);
   const instanceId = (await readDirectoryIdentity(current.path).catch(() => null)) ?? "";
-  // 修复原因：status 失败、超时或输出超限时只记为“有未提交改动”、被忽略的文件记为没有；用户只同意丢弃改动后，
-  // 删除时同样读取失败即会带 --force 删掉从未提示过的被忽略文件（如 .env）。
-  // 修复依据：读不出状态时无法区分两类内容，两者都按存在处理并标出 statusUnknown，删除前须同时同意两类内容。
-  const statusUnknown = [status, submoduleStatus].some(
-    (result) => result.exitCode !== 0 || result.timedOut || result.outputTruncated,
-  );
   return {
     worktreePath: current.path,
     mainWorktreePath: main.path,
     branchName: current.branchName,
-    hasUncommittedChanges: statusUnknown || lines.some((line) => !line.startsWith("!! ")),
-    hasIgnoredFiles: statusUnknown || lines.some((line) => line.startsWith("!! ")),
-    ...(statusUnknown ? { statusUnknown: true } : {}),
+    hasUncommittedChanges: content.hasUncommittedChanges,
+    hasIgnoredFiles: content.hasIgnoredFiles,
+    ...(content.statusUnknown ? { statusUnknown: true } : {}),
     instanceId,
   };
 }

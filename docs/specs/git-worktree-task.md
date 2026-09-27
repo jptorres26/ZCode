@@ -64,8 +64,10 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   （`instanceId` 为该 worktree 目录的设备号、inode 与创建时间；主检出与
   分支名取自 `git worktree list --porcelain`；读取时执行 `git status --porcelain --untracked-files=normal --ignored`，并用
   `git submodule foreach --quiet --recursive` 在每个已初始化的子模块里执行同样的 status（顶层 status 不进入子模块，
-  其中被忽略的文件不会报告，而 `--force` 删除会连同它们一起删掉），两者的条目合并判断，任一读取失败都按读不出状态处理：
-  `hasUncommittedChanges` 为是否有改动（含未跟踪文件）；`hasIgnoredFiles` 为是否有被 Git
+  其中被忽略的文件不会报告，而 `--force` 删除会连同它们一起删掉），两者的条目合并判断；再用 `git submodule status --recursive`
+  找出未初始化（`-` 开头）的子模块，其目录非空时按有未提交改动处理（foreach 不访问它们，顶层 status 也不报告 gitlink
+  目录下的文件，而不带 `--force` 的删除同样会删掉）。任一读取失败都按读不出状态处理：
+  `hasUncommittedChanges` 为是否有改动（含未跟踪文件与未初始化子模块目录里的文件）；`hasIgnoredFiles` 为是否有被 Git
   忽略的文件（`!! ` 条目，如 `.env`、安装的依赖），它们会随 worktree 一起删除。status 读取失败（退出码非 0、超时或
   输出超限）时无法区分两类内容，两者都按存在处理并返回 `statusUnknown: true`：只按“有改动”处理时，用户只同意丢弃改动，
   删除时同样读取失败即会带 `--force` 删掉从未提示过的被忽略文件）。
