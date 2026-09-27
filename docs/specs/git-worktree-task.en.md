@@ -100,8 +100,10 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   timer involved).
 - Precondition: if the same worktree is also open as another local project (for example its root
   and a subfolder), deletion is refused with a hint to close those first (checked before the
-  confirmations and again before releasing; when the path strings differ, each entry's worktree is
-  compared by real path, which covers entries opened through a symlink). Otherwise the other entry's
+  confirmations, again before releasing, and before every retry from a toast; when the path strings
+  differ, the local Host resolves both real paths (`IFileService.resolvePath`) and compares those,
+  which covers entries opened through a symlink or junction, including aliases of a subfolder of the
+  worktree). Otherwise the other entry's
   Agent keeps running inside the worktree and removal fails or deletes a checkout that an unconfirmed
   workspace is using.
 - Interaction: for a local workspace, the sidebar menu shows "Delete worktree" when
@@ -115,7 +117,13 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   4. It calls `disposeUnderPath(worktreePath)` and **waits for the terminals to exit**, then does the
      same cleanup as "Remove" (close the tab, release the runtime, invalidate the task cache) and
      **waits for the runtime release to finish**. The delete flow skips the Windows reserved-name scan:
-     the folder is about to go, and scanning it would hold it open during deletion.
+     the folder is about to go, and scanning it would hold it open during deletion. If the request to
+     end the terminals fails, or the runtime release fails (`releaseWorkspacePreparation` rejects, for
+     example because IPC or the Host went away), **nothing is deleted**: a toast says the tasks and
+     terminals couldn't be stopped and that the folder and the branch are kept, and "Retry" runs this
+     step again (both calls can be repeated; closing an entry that is already closed does nothing).
+     When ending the terminals fails, the entry has not been closed yet. Plain "Remove" ignores the
+     release result.
   5. Only then does it call `removeWorktree`. Release comes first because on Windows an Agent or
      terminal process whose cwd is inside the folder locks it, so removing first fails or deletes only
      some of the files.
@@ -145,6 +153,7 @@ sequenceDiagram
   H->>S: releaseWorkspaceEntry({ scanReservedNames: false })
   S->>S: closeTab, invalidate task cache
   S->>R: releaseWorkspacePreparation (awaited)
+  R-->>H: released or not (if not: toast Retry, nothing deleted)
   H->>G: removeWorktree(force = has changes)
   G-->>H: ok / dirty / leftover / failed
   H->>U: success / toast: Delete anyway (force) / Retry (removeWorktreeLeftover or removeWorktree)

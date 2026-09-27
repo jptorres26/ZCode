@@ -72,8 +72,9 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   `ITerminalService.releasePathBlock({ path })`；删除流程在删除尝试结束（成功或失败）后解除封锁。封锁记录该目录的
   设备号、inode 与创建时间：界面重载或崩溃导致未解除时，一旦该目录已不存在或已是同路径上新建的另一个目录，封锁即失效，
   不会让之后的 worktree 无法开终端（不依赖定时器）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
-- 前提：若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前与释放前
-  各检查一次；路径字符串不匹配时按该入口所在 worktree 的真实路径比较，覆盖经符号链接打开的情况）；否则其它入口的
+- 前提：若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前、释放前
+  以及 toast 中每次重试前各检查一次；路径字符串不匹配时由本地 Host 解析两边的真实路径（`IFileService.resolvePath`）
+  再比较，覆盖经符号链接或 junction 打开的入口，包括指向 worktree 内子目录的别名）；否则其它入口的
   Agent 仍在 worktree 内运行，删除会失败或删掉未确认的活动检出。
 - 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
@@ -82,6 +83,9 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
      `force` 删除。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
   4. 调用 `disposeUnderPath(worktreePath)` 并**等待终端退出**；再执行与“移除”相同的收尾（关闭标签；释放运行时；
      失效任务缓存），并**等待运行时释放完成**。删除流程不做 Windows 保留名扫描（目录即将删除，扫描还会在删除时占用目录）。
+     结束终端的请求失败或运行时释放失败（`releaseWorkspacePreparation` 拒绝，如 IPC 或 Host 中断）时**不删除**：
+     提示未能停止任务和终端、目录与分支均已保留，“重试”从本步重新执行（两者都可重复调用，关闭已关闭的入口为空操作）。
+     结束终端失败时入口尚未关闭。普通“移除”不关心释放结果。
   5. 再调用 `removeWorktree`。先释放后删除：Windows 上以该目录为 cwd 的 Agent/终端进程会占用目录，
      先删除会失败，甚至只删掉一部分文件。
   6. 结果（侧栏行此时已卸载，后续确认与重试都通过 toast 操作完成，由用户触发，不做定时重试）：
@@ -106,6 +110,7 @@ sequenceDiagram
   H->>S: releaseWorkspaceEntry({ scanReservedNames: false })
   S->>S: closeTab、失效任务缓存
   S->>R: releaseWorkspacePreparation（等待完成）
+  R-->>H: 是否释放成功（失败：toast 重试，不删除）
   H->>G: removeWorktree(force = 有改动)
   G-->>H: ok / dirty / leftover / failed
   H->>U: 成功提示 / toast：仍然删除（force）/ 重试（removeWorktreeLeftover 或 removeWorktree）
