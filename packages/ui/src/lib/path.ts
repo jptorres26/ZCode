@@ -108,14 +108,41 @@ export function isSameOrInsidePath(child: string, parent: string): boolean {
 /**
  * `child` 是否位于 `parents` 任一路径下；字面不匹配时再按 `child` 的真实路径比较：经符号链接或 junction
  * 打开的路径字面上不在其下，真实路径却在。`parents` 由调用方给出（通常为字面路径及其真实路径，只解析一次）；
- * `resolvePath` 应返回真实路径（本地 Host 的 realpath），`child` 无法解析时返回 false，由调用方决定是否再用其它方式判断。
+ * `resolvePath` 应返回真实路径（本地 Host 的 realpath）。`child` 无法解析时返回 null（无法判断），
+ * 由调用方再用其它方式判断，仍无法判断时应按“在其中”处理。导出供单测使用。
+ * @lintignore
  */
 export async function isSameOrInsideRealPath(
   child: string,
   parents: readonly string[],
   resolvePath: (path: string) => Promise<string>,
-): Promise<boolean> {
+): Promise<boolean | null> {
   if (parents.some((parent) => isSameOrInsidePath(child, parent))) return true;
   const realChild = await resolvePath(child).catch(() => null);
-  return realChild !== null && parents.some((parent) => isSameOrInsidePath(realChild, parent));
+  if (realChild === null) return null;
+  return parents.some((parent) => isSameOrInsidePath(realChild, parent));
+}
+
+/**
+ * 另一个入口是否位于该 worktree 内：先按字面与真实路径（`parents` 为 worktree 的字面路径及真实路径），
+ * 仍不匹配时按该入口所在的 ZCode worktree 比较（`readManagedWorktreePath`，不是 ZCode worktree 时为 null）。
+ * 修复原因：真实路径与所在 worktree 都读取失败（如 Host 或 Git 暂时出错）时以前按“不在其中”处理，
+ * 删除会在该入口的 Agent 仍在 worktree 内运行时进行。修复依据：无法判断时按在其中处理，拒绝删除（fail closed）。
+ */
+export async function isEntryInsideWorktree(
+  entryPath: string,
+  worktreePath: string,
+  parents: readonly string[],
+  deps: {
+    resolvePath: (path: string) => Promise<string>;
+    readManagedWorktreePath: (path: string) => Promise<string | null>;
+  },
+): Promise<boolean> {
+  const byRealPath = await isSameOrInsideRealPath(entryPath, parents, deps.resolvePath);
+  if (byRealPath) return true;
+  try {
+    return (await deps.readManagedWorktreePath(entryPath)) === worktreePath;
+  } catch {
+    return byRealPath === null;
+  }
 }

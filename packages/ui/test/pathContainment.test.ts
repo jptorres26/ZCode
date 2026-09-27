@@ -35,10 +35,52 @@ test("an entry opened through a symlink or junction is matched by its real path"
     true,
   );
   assert.equal(await isSameOrInsideRealPath("/home/me/other", worktree, resolvePath), false);
-  // 入口路径无法解析：返回 false（由调用方再按所在 worktree 判断）；字面路径在其下时仍然匹配。
-  assert.equal(await isSameOrInsideRealPath("/gone", worktree, resolvePath), false);
+  // 入口路径无法解析：返回 null（无法判断，由调用方再按所在 worktree 判断）；字面路径在其下时仍然匹配。
+  assert.equal(await isSameOrInsideRealPath("/gone", worktree, resolvePath), null);
   assert.equal(
     await isSameOrInsideRealPath("/data/worktrees/feat/gone", worktree, resolvePath),
+    true,
+  );
+});
+
+test("an entry that can't be classified counts as inside the worktree", async () => {
+  const { isEntryInsideWorktree } = await import("../src/lib/path.js");
+  const worktree = "/data/worktrees/feat";
+  const parents = [worktree];
+  const failing = async () => {
+    throw new Error("host unavailable");
+  };
+  const resolved = async (real: string) => real;
+  // 两种方式都无法判断：按在其中处理
+  assert.equal(
+    await isEntryInsideWorktree("/home/me/alias", worktree, parents, {
+      resolvePath: failing,
+      readManagedWorktreePath: failing,
+    }),
+    true,
+  );
+  // 路径已解析到 worktree 外，读取所在 worktree 失败：不在其中
+  assert.equal(
+    await isEntryInsideWorktree("/home/me/other", worktree, parents, {
+      resolvePath: () => resolved("/data/other"),
+      readManagedWorktreePath: failing,
+    }),
+    false,
+  );
+  // 路径无法解析（如入口目录已删除），所在 worktree 读取成功且不是它：不在其中
+  assert.equal(
+    await isEntryInsideWorktree("/home/me/gone", worktree, parents, {
+      resolvePath: failing,
+      readManagedWorktreePath: async () => null,
+    }),
+    false,
+  );
+  // 真实路径识别不了的别名：按所在 worktree 判断
+  assert.equal(
+    await isEntryInsideWorktree("/mnt/bind/feat", worktree, parents, {
+      resolvePath: () => resolved("/mnt/bind/feat"),
+      readManagedWorktreePath: async () => worktree,
+    }),
     true,
   );
 });
