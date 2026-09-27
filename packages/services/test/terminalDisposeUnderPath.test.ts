@@ -157,3 +157,43 @@ test("disposal fails when a terminal doesn't exit in time, and a retry kills it 
   settle();
   await assert.rejects(disposal, /did not exit in time/);
 });
+
+test("a new deletion at a path with a stale block keeps the folder blocked", async () => {
+  const { assertTerminalCwdAllowed, disposeTerminalsUnderPath, releaseTerminalPathBlock } =
+    await import("../src/terminal/terminalDisposal.js");
+  const { mkdtemp, mkdir, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const base = await mkdtemp(join(tmpdir(), "term-reblock-"));
+  const worktree = join(base, "wt");
+  await mkdir(worktree);
+  const blocks = new Map();
+  const state = {
+    pendingCreates: [],
+    terminals: new Map(),
+    cleanupTerminal: () => {},
+    exiting: new Map(),
+    blocks,
+  };
+  // 上一次删除的封锁未解除（界面重载），之后同一路径上建了新的 worktree
+  await disposeTerminalsUnderPath(worktree, state);
+  await rm(worktree, { recursive: true });
+  await mkdir(worktree);
+  // 新的删除：旧 lease 被移除，新 lease 按当前目录生效，新建终端仍被拒绝
+  await disposeTerminalsUnderPath(worktree, state);
+  await assert.rejects(assertTerminalCwdAllowed(blocks, [worktree]), /being removed/);
+  releaseTerminalPathBlock(blocks, worktree);
+  await assertTerminalCwdAllowed(blocks, [worktree]);
+  assert.equal(blocks.size, 0);
+});
+
+test("a child folder whose name starts with two dots is inside the worktree", async () => {
+  const { isRelativePathInside } = await import("../src/fs/pathContainment.js");
+  assert.equal(isPathSameOrInside("/wt/feat/..cache", "/wt/feat", "linux"), true);
+  assert.equal(isPathSameOrInside("/wt/feat/..cache/x", "/wt/feat", "linux"), true);
+  assert.equal(isPathSameOrInside("/wt/feat/../other", "/wt/feat", "linux"), false);
+  assert.equal(isRelativePathInside("..cache"), true);
+  assert.equal(isRelativePathInside(".."), false);
+  assert.equal(isRelativePathInside("../x"), false);
+  assert.equal(isRelativePathInside(""), true);
+});

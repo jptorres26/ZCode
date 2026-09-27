@@ -52,9 +52,10 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
     该目录不属于仓库内容，克隆或检出无法伪造；`git worktree remove`/`prune` 时随之删除。写入失败时 worktree 仍可用，
     只是不提供删除入口。读取时要求标记存在、`createdBy` 为 `zcode` 且 `worktreePath` 的真实路径与当前检出一致。
 - `IGitService.getManagedWorktree({ workspacePath })`：满足上述条件时返回
-  `{ worktreePath, mainWorktreePath, branchName, hasUncommittedChanges }`，否则 `null`（主检出与分支名取自
-  `git worktree list --porcelain`；`hasUncommittedChanges` 为读取时 `git status` 是否有改动（含未跟踪文件），
-  读取失败按有改动处理）。
+  `{ worktreePath, mainWorktreePath, branchName, hasUncommittedChanges, hasIgnoredFiles }`，否则 `null`（主检出与
+  分支名取自 `git worktree list --porcelain`；读取时执行 `git status --porcelain --untracked-files=normal --ignored`：
+  `hasUncommittedChanges` 为是否有改动（含未跟踪文件），读取失败按有改动处理；`hasIgnoredFiles` 为是否有被 Git
+  忽略的文件（`!! ` 条目，如 `.env`、安装的依赖），它们会随 worktree 一起删除）。
 - `IGitService.removeWorktree({ workspacePath, force? })`：
   - 不满足条件 → `{ ok: false, reason: "not-managed" }`；
   - 未指定 `force` 且有未提交改动 → `{ ok: false, reason: "dirty" }`，不删除；
@@ -73,9 +74,10 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   仍在 `create()` 中的终端在第一个 await 前即登记：被标记取消后，启动即结束并以错误返回，`disposeUnderPath` 同样
   等待它结束。`disposeUnderPath` 还会（在任何 await 之前）封锁该目录：
   此后请求、解析或真实 cwd（经符号链接到达同一目录也算）位于其下的新 `create()` 被拒绝，直到调用
-  `ITerminalService.releasePathBlock({ path })`；删除流程在删除尝试结束（成功或失败）后解除封锁。封锁记录该目录的
-  设备号、inode 与创建时间：界面重载或崩溃导致未解除时，一旦该目录已不存在或已是同路径上新建的另一个目录，封锁即失效，
-  不会让之后的 worktree 无法开终端（不依赖定时器）。已知限制：若解除封锁的请求本身丢失（如连接中断）而目录保留，
+  `ITerminalService.releasePathBlock({ path })`；删除流程在删除尝试结束（成功或失败）后解除封锁。每次删除尝试持有
+  一个 lease，记录封锁时该目录的设备号、inode 与创建时间（读取完成前 lease 一律有效）：界面重载或崩溃导致未解除时，
+  一旦该目录已不存在或已是同路径上新建的另一个目录，这个 lease 即失效并被移除，不会让之后的 worktree 无法开终端
+  （不依赖定时器）；同一路径上新的删除尝试只移除旧目录遗留的 lease，自己的 lease 按当前目录生效。已知限制：若解除封锁的请求本身丢失（如连接中断）而目录保留，
   封锁持续到下一次删除成功删掉该目录或 Host 退出。被拒绝的 `create()` 的错误信息不含路径（终端界面会按 error 级别记录）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
 - 前提：若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前、释放前
   以及 toast 中每次重试前各检查一次；路径字符串不匹配时由本地 Host 解析两边的真实路径（`IFileService.resolvePath`，
@@ -86,7 +88,8 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
   2. 破坏性确认：说明将删除的目录、保留的分支；
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以
-     `force` 删除。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
+     `force` 删除。有被 Git 忽略的文件时同样先确认（文案说明本地配置、安装的依赖等会被永久删除；与未提交改动同时
+     存在时合并为一次确认）；只有被忽略的文件时不需要 `force`。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
      确认之后的步骤由 `packages/ui/src/lib/worktreeRemoval.ts` 的 `removeManagedWorktree` 执行（不依赖 React，
      侧栏行关闭入口后即卸载）。**每次尝试都完整执行 4–6**，包括 toast 中的每次重试：先检查其它入口，再结束终端、
      释放 runtime、删除、解除封锁。这些调用都可重复（关闭已关闭的入口为空操作，没有运行中的 runtime 时释放为空操作）。

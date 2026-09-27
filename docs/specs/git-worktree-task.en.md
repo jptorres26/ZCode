@@ -69,10 +69,12 @@ worktreePath }`) is written to that worktree's own Git admin folder (`git rev-pa
     If writing fails, the worktree still works but gets no delete entry. Reading requires the marker to
     exist, `createdBy` to be `zcode`, and the real path of `worktreePath` to match the current checkout.
 - `IGitService.getManagedWorktree({ workspacePath })` returns `{ worktreePath, mainWorktreePath,
-branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null` (the main checkout
-  and branch come from `git worktree list --porcelain`; `hasUncommittedChanges` says whether
-  `git status` showed changes, including untracked files, when it was read, and counts as true if that
-  read fails).
+branchName, hasUncommittedChanges, hasIgnoredFiles }` when those conditions hold, otherwise `null`
+  (the main checkout and branch come from `git worktree list --porcelain`; it runs
+  `git status --porcelain --untracked-files=normal --ignored`: `hasUncommittedChanges` says whether
+  there were changes, including untracked files, and counts as true if that read fails;
+  `hasIgnoredFiles` says whether there were files Git ignores (`!! ` entries such as `.env` or installed
+  dependencies), which are deleted with the worktree).
 - `IGitService.removeWorktree({ workspacePath, force? })`:
   - Conditions not met → `{ ok: false, reason: "not-managed" }`.
   - Without `force`, uncommitted changes → `{ ok: false, reason: "dirty" }`, and nothing is deleted.
@@ -101,10 +103,12 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
   too. `disposeUnderPath` also blocks the folder (before any await): a later `create()` whose requested,
   resolved or real cwd is inside it (reaching it through a symlink counts) is rejected until
   `ITerminalService.releasePathBlock({ path })` is called; the delete flow releases it once the delete
-  attempt ends, whether it succeeded or not. The block records the folder's device, inode and birth
-  time: if a reload or crash leaves it unreleased, it lapses as soon as the folder is gone or is a
+  attempt ends, whether it succeeded or not. Each delete attempt holds one lease, which records the
+  folder's device, inode and birth time (until that is read, the lease always blocks): if a reload or
+  crash leaves it unreleased, the lease lapses and is dropped as soon as the folder is gone or is a
   different folder re-created at the same path, so later worktrees can still open terminals (no
-  timer involved). Known limitation: if the unblock request itself is lost (for example the connection
+  timer involved). A new delete attempt at the same path drops only leases left by an earlier folder;
+  its own lease applies to the current folder. Known limitation: if the unblock request itself is lost (for example the connection
   drops) while the folder is kept, the block stays until a later delete removes the folder or the Host
   exits. The error a refused `create()` returns doesn't contain the path, since the terminal UI logs
   it at error level.
@@ -124,7 +128,10 @@ branchName, hasUncommittedChanges }` when those conditions hold, otherwise `null
      workspaces comes first.
   2. A destructive confirmation names the folder that will be deleted and the branch that is kept.
   3. It calls `getManagedWorktree` again for the current state. With uncommitted changes, a second
-     confirmation says they will be lost for good, and confirming deletes with `force`. **Every
+     confirmation says they will be lost for good, and confirming deletes with `force`. Files Git
+     ignores get the same kind of confirmation (it says local settings, installed dependencies and so on
+     are deleted for good; with uncommitted changes too, it is one combined confirmation); ignored files
+     alone don't need `force`. **Every
      confirmation happens before anything is released**, so cancelling at any step has no effect.
      The steps after the confirmations run in `removeManagedWorktree`
      (`packages/ui/src/lib/worktreeRemoval.ts`), which doesn't depend on React because the sidebar row

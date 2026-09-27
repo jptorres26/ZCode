@@ -34,11 +34,12 @@ import {
   symlink,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parse as parseToml } from "smol-toml";
 import { atomicWritePrivateTextFile } from "@zcode/shared/node";
 import { CommandFileParser } from "../commands/commandFileParser.js";
+import { isRelativePathInside } from "../fs/pathContainment.js";
 import type { ISettingService } from "../setting/setting.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { walkSkillMarkdownPaths } from "../skills/skillDiscoveryWalk.js";
@@ -1249,7 +1250,7 @@ async function ensureWriteTargetAllowed(
     if (resolvedParent) {
       const resolvedTarget = join(resolvedParent, suffix);
       const relativePath = relative(root, resolvedTarget);
-      if (relativePath && !relativePath.startsWith("..") && !isAbsolute(relativePath)) {
+      if (relativePath && isRelativePathInside(relativePath)) {
         return target;
       }
       break;

@@ -2,7 +2,8 @@
  * 按目录结束终端并等待退出（删除 worktree 等目录前使用）。规范：docs/specs/git-worktree-task.md
  */
 import { realpath, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
+import { isRelativePathInside } from "../fs/pathContainment.js";
 
 /**
  * 等待被结束的终端退出的上限。kill 已发出，这里只等操作系统回收进程；上限只保证删除流程不会无限挂起。
@@ -79,17 +80,34 @@ function waitForExitBounded(
 export function isPathSameOrInside(child: string, parent: string, platform = process.platform) {
   const normalize = (value: string) => (platform === "win32" ? value.toLowerCase() : value);
   const relativePath = relative(normalize(parent), normalize(child));
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+  return isRelativePathInside(relativePath);
 }
 
 /**
- * 删除中的目录：在调用方释放前拒绝在其下新建终端。键为请求路径，real 为其真实路径，
- * identity 为封锁时该目录的设备号、inode 与创建时间（用于识别已失效的封锁）。
+ * 一次删除尝试持有的封锁。identity 为封锁时该目录的设备号、inode 与创建时间，读取完成前 resolved 为 false
+ * （此时封锁一律有效）。
  */
-export type TerminalPathBlocks = Map<
-  string,
-  { count: number; real: string | null; identity: string | null }
->;
+interface PathBlockLease {
+  identity: string | null;
+  resolved: boolean;
+}
+
+/**
+ * 删除中的目录：在调用方释放前拒绝在其下新建终端。键为请求路径，real 为其真实路径；每次删除尝试持有一个 lease。
+ */
+export type TerminalPathBlocks = Map<string, { real: string | null; leases: PathBlockLease[] }>;
+
+/**
+ * 丢弃已失效的 lease：已读取身份、且该目录已不存在（current 为 null）或已是另一个目录的 lease。尚未读取身份的 lease 保留。
+ * 修复原因：lease 只在该目录已不存在或被替换后才能判定失效；以前同一路径上的新删除沿用旧身份（`??=`），
+ * 之后新建终端时身份不符，整条封锁被当作失效删除，新删除仍在进行却不再封锁。
+ * 修复依据：身份记在每个 lease 上，失效判断只移除旧目录遗留的 lease，不影响当前目录的 lease。
+ */
+function pruneStaleLeases(entry: { leases: PathBlockLease[] }, current: string | null): void {
+  entry.leases = entry.leases.filter(
+    (lease) => !lease.resolved || (current !== null && lease.identity === current),
+  );
+}
 
 async function readPathIdentity(path: string): Promise<string | null> {
   try {
@@ -117,9 +135,9 @@ export async function assertTerminalCwdAllowed(
       (cwd) => isPathSameOrInside(cwd, raw) || (entry.real && isPathSameOrInside(cwd, entry.real)),
     );
     if (!matches) continue;
-    const current = await readPathIdentity(entry.real ?? raw);
-    if (current === null || (entry.identity !== null && current !== entry.identity)) {
-      blocks.delete(raw);
+    pruneStaleLeases(entry, await readPathIdentity(entry.real ?? raw));
+    if (entry.leases.length === 0) {
+      if (blocks.get(raw) === entry) blocks.delete(raw);
       continue;
     }
     // 不带路径：该错误会被终端界面按 error 级别记录，路径含用户名。
@@ -161,12 +179,18 @@ export function registerPendingTerminalCreate(
   return { pending, settle };
 }
 
+/**
+ * 释放一个 lease（调用方不区分 lease：同一目录上仍在进行的尝试彼此等价）。优先释放已读取身份的 lease，
+ * 让仍在读取身份的尝试继续封锁。
+ */
 export function releaseTerminalPathBlock(blocks: TerminalPathBlocks, path: string): void {
   const raw = resolve(path);
   const entry = blocks.get(raw);
   if (!entry) return;
-  entry.count -= 1;
-  if (entry.count <= 0) blocks.delete(raw);
+  let index = entry.leases.length - 1;
+  while (index > 0 && !entry.leases[index]!.resolved) index -= 1;
+  entry.leases.splice(Math.max(index, 0), 1);
+  if (entry.leases.length === 0) blocks.delete(raw);
 }
 
 /**
@@ -189,8 +213,9 @@ export async function disposeTerminalsUnderPath(
   },
 ): Promise<void> {
   const rawTarget = resolve(path);
-  const block = state.blocks.get(rawTarget) ?? { count: 0, real: null, identity: null };
-  block.count += 1;
+  const block = state.blocks.get(rawTarget) ?? { real: null, leases: [] };
+  const lease: PathBlockLease = { identity: null, resolved: false };
+  block.leases.push(lease);
   state.blocks.set(rawTarget, block);
   // 先同步标记仍在创建中的终端，再等待 realpath，避免在此期间漏掉新开始的创建。
   const waits: Promise<void>[] = [];
@@ -207,7 +232,9 @@ export async function disposeTerminalsUnderPath(
   cancelPendingUnder(rawTarget);
   const target = await realpath(path).catch(() => rawTarget);
   block.real = target;
-  block.identity ??= await readPathIdentity(target);
+  lease.identity = await readPathIdentity(target);
+  lease.resolved = true;
+  pruneStaleLeases(block, lease.identity);
   cancelPendingUnder(target);
   for (const terminal of state.exiting.values()) {
     if (!isPathSameOrInside(terminal.cwd, target)) continue;

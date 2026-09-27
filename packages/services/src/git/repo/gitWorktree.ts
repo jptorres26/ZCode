@@ -12,6 +12,7 @@ import type {
 } from "@zcode/shared";
 import { DEFAULT_GIT_COMMAND_TIMEOUT_MS, DEFAULT_GIT_OUTPUT_BYTES } from "../config.js";
 import type { GitCommandProvider } from "../providers/gitCommandProvider.js";
+import { isRelativePathInside } from "../../fs/pathContainment.js";
 import { parseGitBranchMutationIssues } from "./gitCliHelpers.js";
 
 /** worktree add 会检出整棵树，大仓库远超普通 Git 命令的 15s。 */
@@ -207,7 +208,7 @@ async function realpathOrSelf(path: string): Promise<string> {
 
 function isInsideDir(child: string, parent: string): boolean {
   const relativePath = relative(parent, child);
-  return relativePath.length > 0 && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  return relativePath.length > 0 && isRelativePathInside(relativePath);
 }
 
 /**
@@ -247,18 +248,22 @@ export async function readManagedWorktree(context: {
   if (!(await hasManagedWorktreeMarker(context.commandProvider, current.path, worktreeRoot))) {
     return null;
   }
+  // 修复原因：只有被忽略的文件（如 .env、安装的依赖）时 status 没有输出，界面跳过“永久丢失”确认，
+  // 而 git worktree remove 会连同这些文件一起删除。修复依据：带 --ignored 读取，被忽略的条目（`!! `）单独报告。
   const status = await context.commandProvider.run({
     cwd: current.path,
-    args: ["status", "--porcelain", "--untracked-files=normal"],
+    args: ["status", "--porcelain", "--untracked-files=normal", "--ignored"],
     timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
   });
+  const lines = status.stdout.split("\n").filter((line) => line.length > 0);
   return {
     worktreePath: current.path,
     mainWorktreePath: main.path,
     branchName: current.branchName,
     // 读取失败时按有改动处理：删除前必须经过“丢弃改动”的确认。
-    hasUncommittedChanges: status.exitCode !== 0 || status.stdout.trim().length > 0,
+    hasUncommittedChanges: status.exitCode !== 0 || lines.some((line) => !line.startsWith("!! ")),
+    hasIgnoredFiles: status.exitCode === 0 && lines.some((line) => line.startsWith("!! ")),
   };
 }
 

@@ -70,6 +70,8 @@ export interface GitFileChange {
   isConflicted: boolean;
   /** 子模块（gitlink）条目：工作区中是目录，不能按文件预览。 */
   isSubmodule?: boolean;
+  /** 工作区中已没有该文件（如 index 中已修改、工作区中已删除），不能按文件预览。 */
+  isMissingInWorkingTree?: boolean;
 }
 
 export interface GitDiffRequest {
@@ -218,6 +220,8 @@ export interface GitManagedWorktree {
   branchName: string | null;
   /** 读取时的状态：有未提交改动（含未跟踪文件）。删除前据此先确认，再释放运行时。 */
   hasUncommittedChanges: boolean;
+  /** 读取时的状态：有被 Git 忽略的文件（如本地配置、安装的依赖），删除 worktree 会一并永久删除。 */
+  hasIgnoredFiles: boolean;
 }
 
 export interface GitRemoveWorktreeRequest extends GitRepositoryRequest {
