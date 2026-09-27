@@ -228,16 +228,22 @@ export interface GitRemoveWorktreeRequest extends GitRepositoryRequest {
 export type GitRemoveWorktreeResult =
   | { ok: true; mainWorktreePath: string; branchName: string | null }
   | { ok: false; reason: "not-managed" | "dirty" | "failed"; detail?: string }
-  /** git 已撤销登记但目录未能删净（常见于 Windows 目录占用）；用 removeWorktreeLeftover 清理剩余目录。 */
-  | { ok: false; reason: "leftover"; detail?: string };
+  /**
+   * git 已撤销登记但目录未能删净（常见于 Windows 目录占用）；用 removeWorktreeLeftover 清理剩余目录。
+   * leftoverId 为失败时该目录的文件系统身份（设备号、inode 与创建时间），清理时据此确认仍是同一目录。
+   */
+  | { ok: false; reason: "leftover"; leftoverId: string; detail?: string };
 
 export interface GitRemoveWorktreeLeftoverRequest {
   /** 之前 getManagedWorktree 返回的 worktreePath。 */
   worktreePath: string;
+  /** removeWorktree 返回 leftover 时给出的 leftoverId。 */
+  leftoverId: string;
 }
 
 export type GitRemoveWorktreeLeftoverResult =
   | { ok: true }
+  /** not-leftover：不是可清理的剩余目录，或已不是失败时的那个目录（被替换或换成链接）。 */
   | { ok: false; reason: "not-leftover" | "failed"; detail?: string };
 
 export interface GitPathMutationRequest extends GitRepositoryRequest {

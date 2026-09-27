@@ -1763,9 +1763,10 @@ export function createGitCliRepo(options?: {
       return result;
     },
 
-    async removeWorktreeLeftover(worktreePath: string) {
+    async removeWorktreeLeftover(worktreePath: string, leftoverId: string) {
       return await removeLeftoverWorktreeDir({
         worktreePath,
+        leftoverId,
         worktreesRootDir: resolveWorktreesRootDir(),
       });
     },

@@ -288,10 +288,19 @@ export async function removeManagedWorktree(context: {
     // 修复原因：目录删除中途失败（如 Windows 目录占用）时，git 可能已删除管理目录，登记与创建标记一并消失，
     // 剩下的目录再也无法按 worktree 识别，重试只会得到 not-managed。
     // 修复依据：失败后检查登记是否还在；已不在时返回 leftover，由 removeLeftoverWorktreeDir 清理剩余目录。
-    const stillRegistered = await isRegisteredWorktree(context.commandProvider, worktree);
-    return stillRegistered
-      ? { ok: false, reason: "failed", detail }
-      : { ok: false, reason: "leftover", detail };
+    if (await isRegisteredWorktree(context.commandProvider, worktree)) {
+      return { ok: false, reason: "failed", detail };
+    }
+    const leftoverId = await readDirectoryIdentity(worktree.worktreePath);
+    if (leftoverId === null) {
+      // 登记已撤销、目录也已不在：等同于删除成功。
+      return {
+        ok: true,
+        mainWorktreePath: worktree.mainWorktreePath,
+        branchName: worktree.branchName,
+      };
+    }
+    return { ok: false, reason: "leftover", leftoverId, detail };
   }
   return { ok: true, mainWorktreePath: worktree.mainWorktreePath, branchName: worktree.branchName };
 }
@@ -334,15 +343,36 @@ async function isLiveGitCheckout(dir: string): Promise<boolean> {
 }
 
 /**
+ * 路径本身（不跟随符号链接）是真实目录时返回其身份：设备号、inode 与创建时间；不存在返回 null；
+ * 是链接或其它类型时返回 "not-directory"。创建时间用于区分同路径上重建、复用了同一 inode 的目录。
+ */
+async function readDirectoryIdentity(path: string): Promise<string | null> {
+  try {
+    const stats = await lstat(path, { bigint: true });
+    if (!stats.isDirectory()) return "not-directory";
+    return `${stats.dev}:${stats.ino}:${stats.birthtimeNs}`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/**
  * 清理 removeManagedWorktree 返回 leftover 后剩下的目录。只允许删除 `<worktreesRootDir>/<仓库目录>/<worktree 目录>`
- * 这一层、且已不是有效 Git 检出的目录；目录已不存在视为成功。
+ * 这一层、已不是有效 Git 检出、且仍是失败时那个目录（身份与 leftoverId 一致）的目录；目录已不存在视为成功。
+ * 修复原因：重试可能在很久之后才点击，期间该路径可能已被删除后换成新目录，或换成指向另一个第二层目录的链接，
+ * 只按当前路径判断会递归删除用户未确认过的内容。修复依据：比较失败时记录的目录身份，不跟随链接。
  */
 export async function removeLeftoverWorktreeDir(context: {
   worktreePath: string;
+  leftoverId: string;
   worktreesRootDir: string;
 }): Promise<GitRemoveWorktreeLeftoverResult> {
   let target: string;
   try {
+    const identity = await readDirectoryIdentity(context.worktreePath);
+    if (identity === null) return { ok: true };
+    if (identity !== context.leftoverId) return { ok: false, reason: "not-leftover" };
     target = await realpath(context.worktreePath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true };
