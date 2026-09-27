@@ -5,28 +5,69 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 /**
- * 等待被结束的终端退出的上限。kill 已发出，这里只等操作系统回收进程；上限只保证删除流程不会无限挂起，
- * 超出后调用方继续删除，失败时由其重试入口处理。
+ * 等待被结束的终端退出的上限。kill 已发出，这里只等操作系统回收进程；上限只保证删除流程不会无限挂起。
+ * 修复原因：超时以前与确认退出一样返回成功，删除会在进程仍以该目录为 cwd 时继续。
+ * 修复依据：超时即失败（TERMINALS_DID_NOT_EXIT），调用方不删除目录，由其重试入口再次结束终端。
  */
 const TERMINAL_EXIT_WAIT_MS = 5_000;
 
+/** 终端在等待上限内未退出时 disposeTerminalsUnderPath 的错误信息（不带路径）。 */
+const TERMINALS_DID_NOT_EXIT = "Terminals in the folder did not exit in time";
+
 /** 在删除中的目录下新建终端时的错误信息。 */
-export const TERMINAL_FOLDER_BEING_REMOVED =
+const TERMINAL_FOLDER_BEING_REMOVED =
   "Terminal was not started because its folder is being removed";
 
-/** 仍在 create() 中的终端：disposeUnderPath 标记取消并等待其结束。 */
+/**
+ * 已发出 kill 但尚未退出的终端（按 id）。退出后移除；disposeUnderPath 会再次结束并等待其中位于该目录下的终端，
+ * 这样一次超时之后的重试不会因为终端已从终端表移除而漏掉仍在运行的进程。
+ */
+export type ExitingTerminals = Map<
+  string,
+  { cwd: string; exited: Promise<void>; kill: () => void }
+>;
+
+/** 发出 kill 之后调用：登记到 exiting，直到进程退出。 */
+export function trackTerminalUntilExited(
+  exiting: ExitingTerminals,
+  id: string,
+  terminal: { cwd: string; exited: Promise<void>; pty: { kill: () => void } },
+): void {
+  exiting.set(id, {
+    cwd: terminal.cwd,
+    exited: terminal.exited,
+    kill: () => {
+      try {
+        terminal.pty.kill();
+      } catch {
+        // 进程已退出
+      }
+    },
+  });
+  void terminal.exited.then(() => exiting.delete(id));
+}
+
+/**
+ * 仍在 create() 中的终端：disposeUnderPath 标记取消并等待其结束。
+ * 被取消的终端在等待上限内未退出时 create() 置 exitTimedOut（进程已登记在 ExitingTerminals 中）。
+ */
 export interface PendingTerminalCreate {
   cwd: string;
   cancelled: boolean;
+  exitTimedOut: boolean;
   settled: Promise<void>;
 }
 
-export function waitForExitBounded(exited: Promise<unknown>): Promise<void> {
+/** 等待 `exited`，最多 `timeoutMs`；返回是否确认退出（false 表示超时）。 */
+function waitForExitBounded(
+  exited: Promise<unknown>,
+  timeoutMs = TERMINAL_EXIT_WAIT_MS,
+): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
-    exited.then(() => undefined),
-    new Promise<void>((resolveTimeout) => {
-      timer = setTimeout(resolveTimeout, TERMINAL_EXIT_WAIT_MS);
+    exited.then(() => true),
+    new Promise<boolean>((resolveTimeout) => {
+      timer = setTimeout(() => resolveTimeout(false), timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -86,6 +127,22 @@ export async function assertTerminalCwdAllowed(
   }
 }
 
+/**
+ * create() 在 spawn 之后发现已被取消时调用：结束进程并等待其退出（上限内），始终 reject。
+ * 未在上限内退出时置 exitTimedOut；进程仍登记在 exiting 中，下一次 disposeUnderPath 会再次结束并等待它。
+ */
+export async function rejectCancelledTerminalCreate(
+  pending: PendingTerminalCreate,
+  exiting: ExitingTerminals,
+  id: string,
+  terminal: { cwd: string; exited: Promise<void>; pty: { kill: () => void } },
+): Promise<never> {
+  terminal.pty.kill();
+  trackTerminalUntilExited(exiting, id, terminal);
+  pending.exitTimedOut = !(await waitForExitBounded(terminal.exited));
+  throw new Error(TERMINAL_FOLDER_BEING_REMOVED);
+}
+
 /** 在 create() 的第一个 await 之前登记待创建终端；settle 在 create 结束（成功或失败）时调用。 */
 export function registerPendingTerminalCreate(
   pendingCreates: Set<PendingTerminalCreate>,
@@ -95,6 +152,7 @@ export function registerPendingTerminalCreate(
   const pending: PendingTerminalCreate = {
     cwd: resolve(cwd),
     cancelled: false,
+    exitTimedOut: false,
     settled: new Promise<void>((resolveSettled) => {
       settle = resolveSettled;
     }),
@@ -112,8 +170,8 @@ export function releaseTerminalPathBlock(blocks: TerminalPathBlocks, path: strin
 }
 
 /**
- * 结束所有初始 cwd 位于 `path` 下的终端（含仍在创建中的），并等待它们退出；
- * 同时阻止在该目录下新建终端，直到调用方 releaseTerminalPathBlock。
+ * 结束所有初始 cwd 位于 `path` 下的终端（含仍在创建中的），并等待它们退出；任一终端在等待上限内未退出时 reject。
+ * 同时阻止在该目录下新建终端，直到调用方 releaseTerminalPathBlock（reject 时同样需要解除）。
  * 修复原因：只在两个时间点扫描待创建终端，等待期间仍挂载的 workspace 可以再开一个终端，删除时它又占用目录。
  * 修复依据：先登记目录封锁（同步，早于任何 await），新的 create 在开始时即被拒绝。
  */
@@ -122,8 +180,12 @@ export async function disposeTerminalsUnderPath(
   state: {
     pendingCreates: Iterable<PendingTerminalCreate>;
     terminals: Map<string, { cwd: string; exited: Promise<void> }>;
+    /** 结束终端：发出 kill，并把它登记到 exiting 直到退出。 */
     cleanupTerminal: (id: string) => void;
+    exiting: ExitingTerminals;
     blocks: TerminalPathBlocks;
+    /** 仅供单测缩短等待。 */
+    exitWaitMs?: number;
   },
 ): Promise<void> {
   const rawTarget = resolve(path);
@@ -132,10 +194,12 @@ export async function disposeTerminalsUnderPath(
   state.blocks.set(rawTarget, block);
   // 先同步标记仍在创建中的终端，再等待 realpath，避免在此期间漏掉新开始的创建。
   const waits: Promise<void>[] = [];
+  const cancelled: PendingTerminalCreate[] = [];
   const cancelPendingUnder = (target: string) => {
     for (const pending of state.pendingCreates) {
       if (!pending.cancelled && isPathSameOrInside(pending.cwd, target)) {
         pending.cancelled = true;
+        cancelled.push(pending);
         waits.push(pending.settled);
       }
     }
@@ -145,12 +209,19 @@ export async function disposeTerminalsUnderPath(
   block.real = target;
   block.identity ??= await readPathIdentity(target);
   cancelPendingUnder(target);
+  for (const terminal of state.exiting.values()) {
+    if (!isPathSameOrInside(terminal.cwd, target)) continue;
+    terminal.kill();
+    waits.push(terminal.exited);
+  }
   for (const [id, terminal] of Array.from(state.terminals.entries())) {
     if (!isPathSameOrInside(terminal.cwd, target)) continue;
     state.cleanupTerminal(id);
     waits.push(terminal.exited);
   }
-  if (waits.length > 0) {
-    await waitForExitBounded(Promise.all(waits));
+  const allExited =
+    waits.length === 0 || (await waitForExitBounded(Promise.all(waits), state.exitWaitMs));
+  if (!allExited || cancelled.some((pending) => pending.exitTimedOut)) {
+    throw new Error(TERMINALS_DID_NOT_EXIT);
   }
 }
