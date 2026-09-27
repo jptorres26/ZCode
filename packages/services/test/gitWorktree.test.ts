@@ -211,7 +211,14 @@ test("only ZCode-created linked worktrees are managed and removable", async () =
       mainWorktreePath: repo,
       branchName: "feature/x",
       hasUncommittedChanges: false,
+      hasIgnoredFiles: false,
     });
+    // 只有被忽略的文件（info/exclude 由主仓库与各 worktree 共用）：不算未提交改动，但单独报告
+    await writeFile(join(repo, ".git", "info", "exclude"), ".env.local\n");
+    await writeFile(join(created.worktreePath, ".env.local"), "TOKEN=local\n");
+    const withIgnored = await gitRepo.getManagedWorktree(created.workspacePath);
+    assert.equal(withIgnored?.hasUncommittedChanges, false);
+    assert.equal(withIgnored?.hasIgnoredFiles, true);
   });
 });
 
