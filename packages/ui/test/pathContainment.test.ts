@@ -25,19 +25,20 @@ test("an entry opened through a symlink or junction is matched by its real path"
     if (!real) throw new Error(`ENOENT: ${path}`);
     return real;
   };
+  const worktree = ["/data/worktrees/feat"];
+  // worktree 本身经链接打开：调用方传入字面路径与真实路径
+  const linkedWorktree = ["/home/me/feat", "/data/worktrees/feat"];
+  assert.equal(await isSameOrInsideRealPath("/home/me/link", worktree, resolvePath), true);
+  assert.equal(await isSameOrInsideRealPath("/home/me/link", linkedWorktree, resolvePath), true);
   assert.equal(
-    await isSameOrInsideRealPath("/home/me/link", "/data/worktrees/feat", resolvePath),
+    await isSameOrInsideRealPath("/home/me/feat/src", linkedWorktree, resolvePath),
     true,
   );
-  assert.equal(await isSameOrInsideRealPath("/home/me/link", "/home/me/feat", resolvePath), true);
+  assert.equal(await isSameOrInsideRealPath("/home/me/other", worktree, resolvePath), false);
+  // 入口路径无法解析：返回 false（由调用方再按所在 worktree 判断）；字面路径在其下时仍然匹配。
+  assert.equal(await isSameOrInsideRealPath("/gone", worktree, resolvePath), false);
   assert.equal(
-    await isSameOrInsideRealPath("/home/me/other", "/data/worktrees/feat", resolvePath),
-    false,
-  );
-  // 入口路径已不存在：无法解析，视为不在其中；字面路径在其下时仍然匹配。
-  assert.equal(await isSameOrInsideRealPath("/gone", "/data/worktrees/feat", resolvePath), false);
-  assert.equal(
-    await isSameOrInsideRealPath("/data/worktrees/feat/gone", "/data/worktrees/feat", resolvePath),
+    await isSameOrInsideRealPath("/data/worktrees/feat/gone", worktree, resolvePath),
     true,
   );
 });

@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import type { GitManagedWorktree, GitRemoveWorktreeResult } from "@zcode/shared";
+import type { GitManagedWorktree } from "@zcode/shared";
 import type { IGitService, ITerminalService } from "@zcode/services";
 import { toast } from "@/components/ui/toast.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { getErrorMessage } from "@/lib/errorMessage.js";
+import { getErrorKindForLog, getErrorMessage } from "@/lib/errorMessage.js";
+import { removeManagedWorktree } from "@/lib/worktreeRemoval.js";
 import { logger } from "@/logger.js";
-
-type ZCodeIntl = ReturnType<typeof useZCodeIntl>["intl"];
 
 /**
  * 侧栏“删除 worktree”：只对 ZCode 创建的本地 worktree 可用。规范：docs/specs/git-worktree-task.md
@@ -112,9 +111,12 @@ export function useManagedWorktreeDeletion(options: {
       }
       force = current.hasUncommittedChanges;
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      logger.warn("[WorktreeDeletion] 读取 worktree 状态失败", { error: message });
-      toast(intl.formatMessage({ id: "git.worktree.delete.failed" }, { error: message }));
+      logger.warn("[WorktreeDeletion] 读取 worktree 状态失败", {
+        errorKind: getErrorKindForLog(error),
+      });
+      toast(
+        intl.formatMessage({ id: "git.worktree.delete.failed" }, { error: getErrorMessage(error) }),
+      );
       return;
     }
     if (
@@ -134,16 +136,17 @@ export function useManagedWorktreeDeletion(options: {
     // 修复依据：先由终端服务结束该目录下的终端并等待其退出，再关闭入口并等待 runtime 释放完成，最后删除目录；
     // 失败时提示并提供重试。删除流程不做 Windows 保留名扫描：目录即将删除，扫描还会在删除时占用目录。
     const worktreePath = managedWorktree.worktreePath;
-    await releaseAndRemoveWorktree({
+    await removeManagedWorktree({
       gitService,
       terminalService,
       releaseWorkspaceEntry,
       refuseIfOtherEntriesOpen: () => refuseIfOtherEntriesOpen(worktreePath),
+      notify: toast,
+      intl,
       workspacePath,
       worktreePath,
       branchName,
       force,
-      intl,
     });
   }, [
     confirmDialog,
@@ -158,165 +161,4 @@ export function useManagedWorktreeDeletion(options: {
   ]);
 
   return { managedWorktree, deleteWorktree };
-}
-
-interface ReleasedWorktreeRemoval {
-  gitService: IGitService;
-  terminalService: Pick<ITerminalService, "disposeUnderPath" | "releasePathBlock">;
-  releaseWorkspaceEntry: (options?: { scanReservedNames?: boolean }) => Promise<boolean>;
-  /** 仍有其它入口位于该 worktree 内时提示并返回 true；每次（含 toast 中的重试）删除前都检查。 */
-  refuseIfOtherEntriesOpen: () => Promise<boolean>;
-  workspacePath: string;
-  worktreePath: string;
-  branchName: string;
-  force: boolean;
-  intl: ZCodeIntl;
-}
-
-/**
- * 结束该目录下的终端 → 关闭入口并等待 runtime 释放 → 删除目录；最后解除新建终端封锁。
- * 修复原因：runtime 释放失败（如 IPC 或 Host 中断）以前被当作成功，删除会在 Agent 仍以该目录为 cwd 时进行：
- * POSIX 上删掉活动检出，Windows 上在侧栏入口消失后失败。结束终端的请求失败也有同样问题。
- * 修复依据：任一步失败都不删除，保留目录与分支并提供重试；结束终端失败时入口还未关闭。
- * 两步都可重复调用（关闭已关闭的入口为空操作），重试从头执行。
- */
-async function releaseAndRemoveWorktree(params: ReleasedWorktreeRemoval): Promise<void> {
-  const { terminalService, worktreePath } = params;
-  if (await params.refuseIfOtherEntriesOpen()) {
-    return;
-  }
-  try {
-    const terminalsStopped = await terminalService.disposeUnderPath({ path: worktreePath }).then(
-      () => true,
-      (error: unknown) => {
-        logger.warn("[WorktreeDeletion] 结束 worktree 终端失败", { error: getErrorMessage(error) });
-        return false;
-      },
-    );
-    if (!terminalsStopped || !(await params.releaseWorkspaceEntry({ scanReservedNames: false }))) {
-      reportRemovalFailure(params, "", "release", () => releaseAndRemoveWorktree(params));
-      return;
-    }
-    await removeReleasedWorktree(params);
-  } finally {
-    // 删除尝试结束（成功或失败）后解除新建终端封锁；之后的重试只在 toast 中进行。
-    void terminalService.releasePathBlock({ path: worktreePath }).catch(() => undefined);
-  }
-}
-
-/**
- * 入口已关闭后删除目录；侧栏行此时已卸载，因此不依赖组件状态，后续确认与重试都通过 toast 操作完成。
- * - dirty：确认后又出现了未提交改动，用户未同意丢弃，提供“仍然删除”（force）。
- * - leftover：git 已撤销登记但目录未删净，重试改为清理剩余目录。
- * - 其它失败：重试同一删除。
- */
-async function removeReleasedWorktree(params: ReleasedWorktreeRemoval): Promise<void> {
-  const { gitService, workspacePath, force, intl } = params;
-  const result: GitRemoveWorktreeResult = await gitService
-    .removeWorktree({ workspacePath, force })
-    .catch((error: unknown) => ({
-      ok: false as const,
-      reason: "failed" as const,
-      detail: getErrorMessage(error),
-    }));
-  if (result.ok) {
-    toast(
-      intl.formatMessage({ id: "git.worktree.delete.done" }, { branchName: params.branchName }),
-    );
-    return;
-  }
-  if (result.reason === "dirty") {
-    toast(
-      intl.formatMessage(
-        { id: "git.worktree.delete.dirtyAfterRelease" },
-        { path: params.worktreePath, branchName: params.branchName },
-      ),
-      {
-        variant: "warning",
-        durationMs: 15_000,
-        actionLabel: intl.formatMessage({ id: "git.worktree.delete.forceConfirm" }),
-        onAction: () => {
-          void retryUnlessOtherEntriesOpen(params, () =>
-            removeReleasedWorktree({ ...params, force: true }),
-          );
-        },
-      },
-    );
-    return;
-  }
-  if (result.reason === "leftover") {
-    reportRemovalFailure(params, result.detail ?? result.reason, "leftover", () =>
-      removeLeftoverWorktree(params),
-    );
-    return;
-  }
-  reportRemovalFailure(params, result.detail ?? result.reason, "failed", () =>
-    removeReleasedWorktree(params),
-  );
-}
-
-async function removeLeftoverWorktree(params: ReleasedWorktreeRemoval): Promise<void> {
-  const { gitService, worktreePath, intl } = params;
-  const result = await gitService
-    .removeWorktreeLeftover({ worktreePath })
-    .catch((error: unknown) => ({
-      ok: false as const,
-      reason: "failed" as const,
-      detail: getErrorMessage(error),
-    }));
-  if (result.ok) {
-    toast(
-      intl.formatMessage({ id: "git.worktree.delete.done" }, { branchName: params.branchName }),
-    );
-    return;
-  }
-  reportRemovalFailure(params, result.detail ?? result.reason, "leftover", () =>
-    removeLeftoverWorktree(params),
-  );
-}
-
-const REMOVAL_FAILURE_MESSAGE_IDS = {
-  failed: "git.worktree.delete.failedAfterRelease",
-  leftover: "git.worktree.delete.leftoverAfterRelease",
-  release: "git.worktree.delete.releaseFailed",
-} as const;
-
-// 修复原因：git 在删除任何内容前就拒绝（如 worktree 被锁定）时，也提示“未能完全删除、重试删除剩余内容”，与事实不符。
-// 修复依据：leftover（已部分删除、登记已消失）、普通失败（目录与分支都还在）与未能停止任务（未尝试删除）使用不同文案。
-function reportRemovalFailure(
-  params: ReleasedWorktreeRemoval,
-  error: string,
-  kind: keyof typeof REMOVAL_FAILURE_MESSAGE_IDS,
-  retry: () => Promise<void>,
-): void {
-  const { intl, worktreePath, branchName } = params;
-  if (kind !== "release") {
-    logger.warn("[WorktreeDeletion] 删除 worktree 失败", { error });
-  }
-  toast(
-    intl.formatMessage(
-      { id: REMOVAL_FAILURE_MESSAGE_IDS[kind] },
-      { path: worktreePath, branchName, error },
-    ),
-    {
-      variant: "warning",
-      durationMs: 15_000,
-      actionLabel: intl.formatMessage({ id: "git.worktree.delete.retry" }),
-      onAction: () => {
-        void retryUnlessOtherEntriesOpen(params, retry);
-      },
-    },
-  );
-}
-
-// 修复原因：toast 中的重试可能在很久之后才点击，期间用户可能又打开了该 worktree，此时删除会删掉活动入口的目录。
-// 修复依据：每次重试前重新检查其它入口。
-async function retryUnlessOtherEntriesOpen(
-  params: ReleasedWorktreeRemoval,
-  retry: () => Promise<void>,
-): Promise<void> {
-  if (await params.refuseIfOtherEntriesOpen()) {
-    return;
-  }
-  await retry();
 }

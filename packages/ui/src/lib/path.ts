@@ -106,22 +106,16 @@ export function isSameOrInsidePath(child: string, parent: string): boolean {
 }
 
 /**
- * 与 isSameOrInsidePath 相同，但字面不匹配时再按真实路径比较：经符号链接或 junction 打开的路径
- * 字面上不在 `parent` 下，真实路径却在。`resolvePath` 应返回真实路径（本地 Host 的 realpath）；
- * `child` 无法解析（如已不存在）时视为不在其中，`parent` 无法解析时按字面路径比较。
+ * `child` 是否位于 `parents` 任一路径下；字面不匹配时再按 `child` 的真实路径比较：经符号链接或 junction
+ * 打开的路径字面上不在其下，真实路径却在。`parents` 由调用方给出（通常为字面路径及其真实路径，只解析一次）；
+ * `resolvePath` 应返回真实路径（本地 Host 的 realpath），`child` 无法解析时返回 false，由调用方决定是否再用其它方式判断。
  */
 export async function isSameOrInsideRealPath(
   child: string,
-  parent: string,
+  parents: readonly string[],
   resolvePath: (path: string) => Promise<string>,
 ): Promise<boolean> {
-  if (isSameOrInsidePath(child, parent)) return true;
-  const [realChild, realParent] = await Promise.all([
-    resolvePath(child).catch(() => null),
-    resolvePath(parent).catch(() => parent),
-  ]);
-  return (
-    realChild !== null &&
-    (isSameOrInsidePath(realChild, realParent) || isSameOrInsidePath(realChild, parent))
-  );
+  if (parents.some((parent) => isSameOrInsidePath(child, parent))) return true;
+  const realChild = await resolvePath(child).catch(() => null);
+  return realChild !== null && parents.some((parent) => isSameOrInsidePath(realChild, parent));
 }

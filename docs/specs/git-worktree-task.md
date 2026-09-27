@@ -71,33 +71,42 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
   此后请求、解析或真实 cwd（经符号链接到达同一目录也算）位于其下的新 `create()` 被拒绝，直到调用
   `ITerminalService.releasePathBlock({ path })`；删除流程在删除尝试结束（成功或失败）后解除封锁。封锁记录该目录的
   设备号、inode 与创建时间：界面重载或崩溃导致未解除时，一旦该目录已不存在或已是同路径上新建的另一个目录，封锁即失效，
-  不会让之后的 worktree 无法开终端（不依赖定时器）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
+  不会让之后的 worktree 无法开终端（不依赖定时器）。已知限制：若解除封锁的请求本身丢失（如连接中断）而目录保留，
+  封锁持续到下一次删除成功删掉该目录或 Host 退出。被拒绝的 `create()` 的错误信息不含路径（终端界面会按 error 级别记录）。终端服务是所有 PTY 的唯一所有者，覆盖右侧面板与底部终端。
 - 前提：若同一 worktree 还以其它本地入口打开（如根目录与某个子目录），拒绝删除并提示先关闭这些入口（确认前、释放前
-  以及 toast 中每次重试前各检查一次；路径字符串不匹配时由本地 Host 解析两边的真实路径（`IFileService.resolvePath`）
-  再比较，覆盖经符号链接或 junction 打开的入口，包括指向 worktree 内子目录的别名）；否则其它入口的
+  以及 toast 中每次重试前各检查一次；路径字符串不匹配时由本地 Host 解析两边的真实路径（`IFileService.resolvePath`，
+  worktree 路径只解析一次）再比较，覆盖经符号链接或 junction 打开的入口，包括指向 worktree 内子目录的别名；仍不匹配时
+  （如 bind mount 这类 realpath 识别不了的别名，或解析失败）再按该入口所在的 worktree（`getManagedWorktree`）比较）；否则其它入口的
   Agent 仍在 worktree 内运行，删除会失败或删掉未确认的活动检出。
 - 交互：本地 workspace 的侧栏菜单在 `getManagedWorktree` 返回非空时显示“删除 worktree”（菜单打开时查询）。
   1. 若该 workspace 有运行中的对话，先沿用“移除”的运行中确认；
   2. 破坏性确认：说明将删除的目录、保留的分支；
   3. 重新调用 `getManagedWorktree` 读取当前状态；有未提交改动时再次确认“未提交的改动将永久丢失”，确认后以
      `force` 删除。**所有确认都在释放之前完成**，任何一步取消都不产生副作用。
+     确认之后的步骤由 `packages/ui/src/lib/worktreeRemoval.ts` 的 `removeManagedWorktree` 执行（不依赖 React，
+     侧栏行关闭入口后即卸载）。**每次尝试都完整执行 4–6**，包括 toast 中的每次重试：先检查其它入口，再结束终端、
+     释放 runtime、删除、解除封锁。这些调用都可重复（关闭已关闭的入口为空操作，没有运行中的 runtime 时释放为空操作）。
+     这样重试时即使用户在此期间重新打开过该 worktree、开了终端又“移除”（“移除”不等待终端与 runtime 退出），也会先结束
+     它们再删除。
   4. 调用 `disposeUnderPath(worktreePath)` 并**等待终端退出**；再执行与“移除”相同的收尾（关闭标签；释放运行时；
      失效任务缓存），并**等待运行时释放完成**。删除流程不做 Windows 保留名扫描（目录即将删除，扫描还会在删除时占用目录）。
      结束终端的请求失败或运行时释放失败（`releaseWorkspacePreparation` 拒绝，如 IPC 或 Host 中断）时**不删除**：
-     提示未能停止任务和终端、目录与分支均已保留，“重试”从本步重新执行（两者都可重复调用，关闭已关闭的入口为空操作）。
-     结束终端失败时入口尚未关闭。普通“移除”不关心释放结果。
-  5. 再调用 `removeWorktree`。先释放后删除：Windows 上以该目录为 cwd 的 Agent/终端进程会占用目录，
-     先删除会失败，甚至只删掉一部分文件。
-  6. 结果（侧栏行此时已卸载，后续确认与重试都通过 toast 操作完成，由用户触发，不做定时重试）：
+     提示未能停止任务和终端、目录与分支均已保留，并提供“重试”。结束终端失败时不关闭入口（首次尝试时侧栏行仍在）。
+     普通“移除”不关心释放结果。
+  5. 再调用 `removeWorktree`（清理剩余目录的重试调用 `removeWorktreeLeftover`）。先释放后删除：Windows 上以该目录为
+     cwd 的 Agent/终端进程会占用目录，先删除会失败，甚至只删掉一部分文件。
+  6. 结果（除结束终端失败外，侧栏行此时已卸载；后续确认与重试都通过 toast 操作完成，由用户触发，不做定时重试）：
      - 成功：提示分支已保留；
-     - `dirty`（确认之后又出现了改动，用户没有同意丢弃）：提示未删除，提供“仍然删除”（以 `force` 重试）；
-     - `leftover`：提示目录未能完全删除、分支已保留，“重试”改为调用 `removeWorktreeLeftover`；
-     - 其它失败（git 未删除任何内容，如 worktree 被锁定）：提示目录与分支都已保留，“重试”再次调用 `removeWorktree`。
+     - `dirty`（确认之后又出现了改动，用户没有同意丢弃）：提示未删除，提供“仍然删除”（以 `force` 重新尝试）；
+     - `leftover`：提示目录未能完全删除、分支已保留，“重试”的删除步骤改为 `removeWorktreeLeftover`；
+     - 其它失败（git 未删除任何内容，如 worktree 被锁定）：提示目录与分支都已保留，“重试”重新尝试 `removeWorktree`。
+  - 日志只记录失败类别，不记录 git 的错误信息（其中含路径）；完整信息只在提示中展示。
 
 ```mermaid
 sequenceDiagram
   participant U as 用户
   participant H as useManagedWorktreeDeletion
+  participant W as removeManagedWorktree
   participant T as ITerminalService
   participant S as WorkspaceSidebarItem（移除收尾）
   participant R as zcodeTaskService
@@ -106,14 +115,23 @@ sequenceDiagram
   H->>U: 运行中确认 → 破坏性确认
   H->>G: getManagedWorktree（当前状态）
   H->>U: 有改动时：丢弃改动确认
-  H->>T: disposeUnderPath(worktreePath)（等待终端退出）
-  H->>S: releaseWorkspaceEntry({ scanReservedNames: false })
-  S->>S: closeTab、失效任务缓存
-  S->>R: releaseWorkspacePreparation（等待完成）
-  R-->>H: 是否释放成功（失败：toast 重试，不删除）
-  H->>G: removeWorktree(force = 有改动)
-  G-->>H: ok / dirty / leftover / failed
-  H->>U: 成功提示 / toast：仍然删除（force）/ 重试（removeWorktreeLeftover 或 removeWorktree）
+  H->>W: 开始尝试
+  loop 每次尝试（首次，以及 toast 中的每次重试）
+    W->>H: 其它入口仍打开？（是：提示并结束）
+    W->>T: disposeUnderPath(worktreePath)（等待终端退出，封锁新建）
+    alt 结束终端失败
+      W->>U: toast：未能停止，目录与分支保留（重试）
+    else
+      W->>S: releaseWorkspaceEntry({ scanReservedNames: false })
+      S->>S: closeTab、失效任务缓存
+      S->>R: releaseWorkspacePreparation（等待完成）
+      R-->>W: 是否释放成功（失败：toast 重试，不删除）
+      W->>G: removeWorktree(force) 或 removeWorktreeLeftover
+      G-->>W: ok / dirty / leftover / failed
+      W->>U: 成功提示 / toast：仍然删除（force）/ 重试
+    end
+    W->>T: releasePathBlock(worktreePath)
+  end
 ```
 
 - 文案 `workspaceSidebar.deleteWorktree` 与 `git.worktree.delete.*`，`en-US` 与 `zh-CN` 同步提供。
