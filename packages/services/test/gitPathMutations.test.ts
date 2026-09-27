@@ -228,6 +228,21 @@ withRepo(
   },
 );
 
+withRepo(
+  "discarding a staged rename never overwrites content re-created at the original path",
+  { commit: true },
+  async (dir) => {
+    await git(dir, "mv", "b.txt", "b2.txt");
+    await writeFile(join(dir, "b.txt"), "re-created\n");
+    await assert.rejects(
+      createGitCliRepo().discard(dir, ["b2.txt"], true, []),
+      /same path[^:]*: b\.txt$/,
+    );
+    assert.equal(await readFile(join(dir, "b.txt"), "utf8"), "re-created\n");
+    assert.equal(await exists(join(dir, "b2.txt")), true);
+  },
+);
+
 withRepo("discard of a staged rename restores the original path", { commit: true }, async (dir) => {
   await git(dir, "mv", "b.txt", "b2.txt");
   await createGitCliRepo().discard(dir, ["b2.txt"], true, []);
