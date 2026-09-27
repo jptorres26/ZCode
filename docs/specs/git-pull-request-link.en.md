@@ -21,8 +21,13 @@ token is needed, and no credentials are stored on the client.
 ## Resolution rules
 
 1. Only computed when HEAD is on a branch (not detached).
-2. Upstream: `branch.<name>.remote` and `branch.<name>.merge` (with `refs/heads/` stripped) give
-   the remote name and remote branch name; without an upstream the result is `null`.
+2. Push destination (the same one a bare `git push` uses): the remote is `branch.<name>.pushRemote`,
+   then `remote.pushDefault`, then `branch.<name>.remote`; with none, or `.`, the result is `null`.
+   When it is the upstream's remote, the source branch is `branch.<name>.merge` with `refs/heads/`
+   stripped (`null` if it isn't a branch ref). When it is another remote (such as a fork), the source
+   branch is the local branch name, since `push.default` simple/current/matching push the same name
+   there. The link points at the repository that was pushed to, and the host's page picks the target
+   repository.
 3. Remote address: `git remote get-url <remote>` (with `insteadOf` applied). Supports `https://`,
    `http://`, `ssh://`, `git://`, and the scp form `user@host:owner/repo.git`. The web address
    always drops user names, passwords, and tokens; ssh / git / scp forms become `https://host/...`
