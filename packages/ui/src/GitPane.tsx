@@ -492,8 +492,20 @@ export function GitPane({
   // 只有 unstaged 来源的新侧是工作区文件，行号才能与文件预览对齐；其它来源的评论只进入输入框附件。
   const sharesWorkingTree = currentDataset.id === "unstaged";
   const commentWorkspace = useMemo(
-    () => ({ workspacePath, workspaceIdentity, sharesWorkingTree }),
-    [sharesWorkingTree, workspaceIdentity, workspacePath],
+    () => ({
+      workspacePath,
+      workspaceIdentity,
+      remoteSessionId: workspaceRemoteSessionId,
+      sourceId: currentDataset.id,
+      sharesWorkingTree,
+    }),
+    [
+      currentDataset.id,
+      sharesWorkingTree,
+      workspaceIdentity,
+      workspacePath,
+      workspaceRemoteSessionId,
+    ],
   );
 
   const handleOpenChangeInViewer = useCallback(

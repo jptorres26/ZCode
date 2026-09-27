@@ -105,3 +105,26 @@ export function getDiffCommentSelectedText(
   }
   return selected.join("\n");
 }
+
+/**
+ * 草稿所属的范围：workspace（身份 key 与远程会话）、来源与文件；不可评论时为 null。
+ * 修复原因：两个远程 workspace 路径相同、改动的文件路径也相同时，切换后复用同一张卡片，只在不可评论时清空的草稿会留下，
+ * 提交时把 A 中引用的代码附到 B 的对话。修复依据：按这个范围作废草稿；内容刷新不改变范围，草稿保留。
+ */
+export function getDiffCommentDraftScopeKey(
+  target: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+    remoteSessionId?: string;
+    sourceId: string;
+    sourcePath: string;
+  } | null,
+): string | null {
+  if (!target) return null;
+  return JSON.stringify([
+    target.workspaceIdentity?.trim() || target.workspacePath,
+    target.remoteSessionId ?? "",
+    target.sourceId,
+    target.sourcePath,
+  ]);
+}

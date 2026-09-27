@@ -43,7 +43,12 @@ delete an inline comment ──► removeComment + dispatchCodeCommentRemoveFrom
   line-number → text map per side from the patch hunks. The text is captured **when the draft starts**
   and kept with it, so an auto-refresh of the diff can't change the quoted code. If no non-empty text is
   found, nothing is submitted (same as the file viewer).
-- The draft is cleared when the card collapses (or otherwise stops taking comments).
+- A draft belongs to a workspace (identity key `workspaceIdentity?.trim() || workspacePath` plus the
+  remote session), a change source and a file. It is cleared when the card collapses (or otherwise
+  stops taking comments) or when any of these changes, for example when switching to another remote
+  workspace with the same path and changed file reuses the card, which would otherwise attach code
+  quoted in A to B's conversation. An automatic diff refresh doesn't change the scope, so the draft
+  stays.
 - Payload: `sourcePath` is the file's absolute path, normalized to the workspace's path separator
   (so Windows never mixes `\` and `/`), `sourceTitle` its file name, and
   `workspacePath` / `workspaceIdentity` come from the Review pane's workspace.
