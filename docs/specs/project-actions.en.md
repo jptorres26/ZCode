@@ -49,7 +49,9 @@ A top-level `actions` array in `<workspace>/.zcode/config.json`:
   watcher; the file is the single source of truth. A not-found error means no actions.
   `checkFilesExist` is not used: it caches positive and negative results for a minute for chat path
   mentions, so it can return a stale answer. Remote workspaces read the file through the
-  `fileService` from `useWorkspaceServices`.
+  `fileService` from `useWorkspaceServices`. The menu component stays mounted when the workspace
+  changes, so a change drops any read in flight and goes back to loading; if the menu is open, it reads
+  again for the new workspace. A result from the previous workspace is never used.
 
 ## Running
 

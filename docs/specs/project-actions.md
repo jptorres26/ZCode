@@ -36,7 +36,8 @@ Codex desktop 的本地环境可以定义“操作”：一键在内置终端运
 - 同一文件的 `worktree.setup` 是新建 worktree 后的 setup 命令，见 [git-worktree-task.md](git-worktree-task.md)。
 - UI 每次打开菜单时直接 `readTextFile` 读取一次（最多 256 KB；超出时提示文件过大，而不是截断后报 JSON 无效），不缓存、不监听；文件即唯一事实来源。读取报文件不存在
   视为没有操作；不使用 `checkFilesExist`（它为聊天路径提及缓存一分钟正负结果，会读到过期结论）。远程工作区经
-  `useWorkspaceServices` 的 `fileService` 读取。
+  `useWorkspaceServices` 的 `fileService` 读取。切换 workspace 时菜单组件保持挂载：此时作废进行中的读取并回到加载中，
+  菜单开着就按新 workspace 重新读取，旧 workspace 的读取结果不会被采用。
 
 ## 运行
 
