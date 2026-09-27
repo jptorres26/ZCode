@@ -544,3 +544,48 @@ test("a failed branch lookup never lets the rollback delete an existing branch",
     assert.equal(await git(repo, "branch", "--list", "idle"), "idle");
   });
 });
+
+test("ignored files inside an initialized submodule need consent before removal", async () => {
+  const { readManagedWorktree, removeManagedWorktree } =
+    await import("../src/git/repo/gitWorktree.js");
+  const { createGitCommandProvider } = await import("../src/git/providers/gitCommandProvider.js");
+  await withRepo(async (repo, worktreesRootDir) => {
+    const sub = join(repo, "..", "sub");
+    await mkdir(sub);
+    await git(sub, "-c", "init.defaultBranch=main", "init", "-q");
+    await writeFile(join(sub, "f.txt"), "f\n");
+    await git(sub, "add", ".");
+    await git(sub, "-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-q", "-m", "sub");
+    const created = await createGitCliRepo({ worktreesRootDir }).createWorktree(repo, "with-sub");
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const wt = created.worktreePath;
+    await git(wt, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sm");
+    await git(wt, "commit", "-q", "-m", "add submodule");
+    // 子模块自己的排除规则忽略 cache；顶层的 status --ignored 看不到它
+    await writeFile(
+      await git(join(wt, "sm"), "rev-parse", "--git-path", "info/exclude").then((p) =>
+        p.startsWith("/") ? p : join(wt, "sm", p),
+      ),
+      "cache\n",
+    );
+    await writeFile(join(wt, "sm", "cache"), "local data\n");
+    assert.equal(await git(wt, "status", "--porcelain", "--ignored"), "");
+    // 顶层另有一处未提交改动：只同意丢弃改动时不能带 --force 删掉子模块里被忽略的文件
+    await writeFile(join(wt, "a.txt"), "changed\n");
+    const commandProvider = createGitCommandProvider();
+    const worktree = await readManagedWorktree({
+      commandProvider,
+      worktreeRoot: wt,
+      worktreesRootDir,
+    });
+    assert.ok(worktree);
+    assert.equal(worktree.hasIgnoredFiles, true);
+    assert.equal(worktree.statusUnknown, undefined);
+    assert.deepEqual(await removeManagedWorktree({ commandProvider, worktree, force: true }), {
+      ok: false,
+      reason: "dirty",
+    });
+    assert.ok(await exists(join(wt, "sm", "cache")));
+  });
+});
