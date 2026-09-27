@@ -1,6 +1,6 @@
 import { parseProjectActionsConfig, type ProjectActionsConfig } from "@zcode/shared";
 import { PlayIcon } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -55,6 +55,7 @@ export function WorkspaceProjectActionsMenu({
   );
   const [state, setState] = useState<ActionsState>({ status: "loading" });
   const requestIdRef = useRef(0);
+  const openRef = useRef(false);
   const label = intl.formatMessage({ id: "projectActions.trigger" });
 
   const loadActions = useCallback(async () => {
@@ -77,7 +78,16 @@ export function WorkspaceProjectActionsMenu({
     if (requestId === requestIdRef.current) {
       setState(next);
     }
-  }, [fileService, workspaceAbsPath]);
+  }, [fileService, workspaceAbsPath, workspaceIdentity, remoteSessionId]);
+
+  // 修复原因：切换 workspace 时该组件保持挂载，请求编号不变；旧 workspace 较慢的读取在切换后完成仍会被采用，
+  // 菜单开着时点选会在新 workspace 中执行旧 workspace 仓库里定义的命令。
+  // 修复依据：workspace 变化（loadActions 随之重建）时作废进行中的读取并回到 loading；菜单开着就按新 workspace 重新读取。
+  useEffect(() => {
+    requestIdRef.current += 1;
+    setState({ status: "loading" });
+    if (openRef.current) void loadActions();
+  }, [loadActions]);
 
   if (isOfficeMode) return null;
 
@@ -89,6 +99,7 @@ export function WorkspaceProjectActionsMenu({
   return (
     <DropdownMenu
       onOpenChange={(open) => {
+        openRef.current = open;
         if (open) void loadActions();
       }}
     >
