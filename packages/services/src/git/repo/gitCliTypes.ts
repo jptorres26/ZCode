@@ -31,6 +31,8 @@ export interface GitStatusEntry {
   isUntracked: boolean;
   isConflicted: boolean;
   isSubmodule?: boolean;
+  /** 子模块检出的提交与 index 相同：工作区一侧的改动只在子模块内部。 */
+  isSubmoduleContentOnly?: boolean;
 }
 
 export interface GitBranchComparisonChange {

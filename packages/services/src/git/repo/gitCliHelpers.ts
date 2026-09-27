@@ -296,28 +296,30 @@ export function parseStatusPorcelain(stdout: string): {
 
     if (record.startsWith("1 ")) {
       // 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
-      const match = record.match(/^1 ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ (.+)$/);
+      const match = record.match(/^1 ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ (.+)$/);
       if (!match) {
         continue;
       }
 
       const xy = match[1]!;
       entries.push({
-        path: normalizeGitPath(match[3]!),
+        path: normalizeGitPath(match[4]!),
         originalPath: null,
         kind: inferKindFromStatusCode(xy[0] !== "." ? xy[0]! : xy[1]!),
         x: xy[0]!,
         y: xy[1]!,
         isUntracked: false,
         isConflicted: false,
-        ...submoduleFlag(match[2]!),
+        ...submoduleFlag(match[3]!, match[2]!),
       });
       continue;
     }
 
     if (record.startsWith("2 ")) {
       // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>
-      const match = record.match(/^2 ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ [^ ]+ (.+)$/);
+      const match = record.match(
+        /^2 ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ ([^ ]+) [^ ]+ [^ ]+ [^ ]+ (.+)$/,
+      );
       if (!match) {
         continue;
       }
@@ -325,14 +327,14 @@ export function parseStatusPorcelain(stdout: string): {
       const originalPath = records[index + 1] ?? null;
       index += 1;
       entries.push({
-        path: normalizeGitPath(match[3]!),
+        path: normalizeGitPath(match[4]!),
         originalPath: originalPath ? normalizeGitPath(originalPath) : null,
         kind: "renamed",
         x: match[1]![0]!,
         y: match[1]![1]!,
         isUntracked: false,
         isConflicted: false,
-        ...submoduleFlag(match[2]!),
+        ...submoduleFlag(match[3]!, match[2]!),
       });
       continue;
     }
@@ -410,8 +412,17 @@ const GITLINK_MODE = "160000";
  * 修复依据：“打开文件”打开的是工作区版本，因此按工作区模式判断，而不是 `<sub>` 字段：
  * 任一侧是子模块时 `<sub>` 都为 `S...`，子模块被换成普通文件后文件仍可预览。只在是子模块时加字段，其它条目形状不变。
  */
-function submoduleFlag(worktreeMode: string): { isSubmodule?: true } {
-  return worktreeMode === GITLINK_MODE ? { isSubmodule: true } : {};
+function submoduleFlag(
+  worktreeMode: string,
+  submoduleState?: string,
+): { isSubmodule?: true; isSubmoduleContentOnly?: true } {
+  if (worktreeMode !== GITLINK_MODE) return {};
+  // 修复原因：子模块检出的提交未变、只有其内部文件改动（`<sub>` 为 `S.M.` / `S..U` 等）时，`git add` 与
+  // `git restore --worktree` 都不改变子模块内部，界面却提示成功、刷新后同一行仍在。
+  // 修复依据：`<sub>` 第二位为 `.`（提交未变）时标出 isSubmoduleContentOnly，界面据此不提供暂存。
+  return submoduleState?.startsWith("S") && submoduleState[1] === "."
+    ? { isSubmodule: true, isSubmoduleContentOnly: true }
+    : { isSubmodule: true };
 }
 
 /**

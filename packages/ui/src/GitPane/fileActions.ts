@@ -17,7 +17,8 @@ export interface GitPaneFileActionContext {
 type GitPaneActionableChange = Pick<
   GitFileChange,
   "path" | "repoRelativePath" | "section" | "kind" | "isConflicted" | "isUntracked"
->;
+> &
+  Partial<Pick<GitFileChange, "isSubmodule" | "isSubmoduleContentOnly">>;
 
 function isConflictedChange(change: GitPaneActionableChange): boolean {
   return change.isConflicted || change.section === "conflicted";
@@ -30,12 +31,17 @@ export function getGitPaneFileActions(
   if (!context.repositoryReady || context.datasetReadonly) {
     return [];
   }
+  // 修复原因：`git restore` 不会改动子模块的检出与其内部文件，子模块行的“丢弃”只提示成功、刷新后同一行仍在（staged
+  // 来源只会把记录的提交取消暂存）；只有内部文件改动、检出提交未变的子模块，`git add` 也不会暂存任何内容。
+  // 修复依据：子模块行不提供丢弃；检出提交未变（isSubmoduleContentOnly）时也不提供暂存。
   if (context.sourceId === "unstaged") {
     // 冲突文件只能“暂存”（即标记为已解决）；丢弃会被服务端拒绝，界面不提供入口。
-    return isConflictedChange(change) ? ["stage"] : ["stage", "discard"];
+    if (isConflictedChange(change)) return ["stage"];
+    if (change.isSubmodule) return change.isSubmoduleContentOnly ? [] : ["stage"];
+    return ["stage", "discard"];
   }
   if (context.sourceId === "staged") {
-    return ["unstage", "discard"];
+    return change.isSubmodule ? ["unstage"] : ["unstage", "discard"];
   }
   return [];
 }

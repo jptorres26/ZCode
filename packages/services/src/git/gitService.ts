@@ -52,6 +52,7 @@ function buildFileChange(
     isUntracked: section === "untracked",
     isConflicted: section === "conflicted",
     ...(entry.isSubmodule ? { isSubmodule: true } : {}),
+    ...(entry.isSubmoduleContentOnly ? { isSubmoduleContentOnly: true } : {}),
     ...(isMissingInWorkingTree(entry) ? { isMissingInWorkingTree: true } : {}),
   };
 }

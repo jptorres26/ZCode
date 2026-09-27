@@ -41,6 +41,11 @@ review 面板能力对齐，同时修正服务端在重命名、未跟踪文件�
 | `branch`      | `branch`       | 无（只读对比）                 | 无                           |
 | `last-turn`   | `last-turn`    | 无（只读）                     | 无                           |
 
+子模块行（工作区一侧为 gitlink，服务端标出 `isSubmodule`）：`git restore` 不改动子模块的检出与其内部文件，
+所有来源都不提供丢弃（staged 来源只保留取消暂存）；检出的提交未变、只有内部文件改动时（porcelain v2 的 `<sub>`
+为 `S.M.`、`S..U` 等，服务端标出 `isSubmoduleContentOnly`），`git add` 也不会记录任何内容，因此不提供暂存。
+批量操作按同一规则跳过这些行。
+
 仓库加载中、出错、Git 不可用或不是仓库时，不渲染任何操作。数据集 `readonly === true`
 时不渲染任何操作。
 

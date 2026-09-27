@@ -71,6 +71,8 @@ export interface GitFileChange {
   isConflicted: boolean;
   /** 子模块（gitlink）条目：工作区中是目录，不能按文件预览。 */
   isSubmodule?: boolean;
+  /** 子模块检出的提交与 index 相同，工作区一侧的改动只在子模块内部：暂存不会记录任何内容。 */
+  isSubmoduleContentOnly?: boolean;
   /** 工作区中已没有该文件（如 index 中已修改、工作区中已删除），不能按文件预览。 */
   isMissingInWorkingTree?: boolean;
 }

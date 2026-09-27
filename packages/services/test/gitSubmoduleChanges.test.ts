@@ -58,6 +58,30 @@ test("status marks entries that are a submodule in the working tree", () => {
   );
   assert.equal("isSubmodule" in entries[1]!, false);
   assert.equal(entries[2]!.originalPath, "libs/old");
+  // 检出的提交变了（SC..）不是“只有内部改动”
+  assert.equal(entries[0]!.isSubmoduleContentOnly, undefined);
+});
+
+test("status marks submodules whose checked-out commit is unchanged", () => {
+  const hash = "0".repeat(40);
+  const { entries } = parseStatusPorcelain(
+    [
+      `1 .M S.M. 160000 160000 160000 ${hash} ${hash} modified-inside`,
+      `1 .M S..U 160000 160000 160000 ${hash} ${hash} untracked-inside`,
+      `1 .M SC.. 160000 160000 160000 ${hash} ${hash} moved`,
+      `1 .M N... 100644 100644 100644 ${hash} ${hash} file.txt`,
+      "",
+    ].join("\0"),
+  );
+  assert.deepEqual(
+    entries.map((entry) => [entry.path, entry.isSubmoduleContentOnly ?? false]),
+    [
+      ["modified-inside", true],
+      ["untracked-inside", true],
+      ["moved", false],
+      ["file.txt", false],
+    ],
+  );
 });
 
 test("raw diff output yields the paths that are a gitlink on the new side", () => {
@@ -111,6 +135,7 @@ test("changes and the branch comparison flag a changed submodule, not files", as
       unstaged.map((change) => [change.repoRelativePath, change.isSubmodule ?? false]),
       [["sub", true]],
     );
+    assert.equal(unstaged[0]!.isSubmoduleContentOnly, undefined);
     const comparison = await service.getBranchComparison({ workspacePath: main });
     assert.deepEqual(
       comparison.changes
@@ -120,6 +145,18 @@ test("changes and the branch comparison flag a changed submodule, not files", as
         ["a.txt", false],
         ["sub", true],
       ],
+    );
+
+    // 子模块回到记录的提交，只有内部的未跟踪文件
+    await git(join(main, "sub"), "reset", "-q", "--hard", "HEAD~1");
+    await writeFile(join(main, "sub", "scratch.txt"), "x\n");
+    const contentOnly = await service.getChanges({ workspacePath: main, sourceId: "unstaged" });
+    assert.deepEqual(
+      contentOnly.map((change) => [
+        change.repoRelativePath,
+        change.isSubmoduleContentOnly ?? false,
+      ]),
+      [["sub", true]],
     );
   } finally {
     await rm(root, { recursive: true, force: true });
