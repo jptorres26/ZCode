@@ -33,8 +33,9 @@ workspace 打开与草稿转移，只新增一个 Git 服务方法。
    不存在（未跟踪、被忽略或新建）时回退为 worktree 根目录。
 5. 失败时解析 git 输出为 issue，并回滚这次尝试留下的内容：git 在检出前就建好了分支，检出失败或超时被终止时，
    分支（有时还有登记为锁定的半成品目录）会留下，同样的输入重试会报“分支已存在”。回滚依次执行 `git worktree prune`；
-   目标目录仍登记时 `git worktree remove --force --force` 删除（目录是这次尝试新建的，此前不存在）；分支在这次尝试前
-   不存在、没有被任何 worktree 检出且仍指向创建时的提交时，`git update-ref -d refs/heads/<branch> <提交>` 删除它。
+   目标目录仍登记时 `git worktree remove --force --force` 删除（目录是这次尝试新建的，此前不存在）；确认分支在这次尝试前
+   不存在（`rev-parse --verify --quiet` 以 1 退出且没有输出；查询超时或出错时无法判断，不删除分支）、没有被任何 worktree
+   检出且仍指向创建时的提交时，`git update-ref -d refs/heads/<branch> <提交>` 删除它。
    回滚是尽力而为，失败时仍返回原来的 issue。成功后使原 workspace 的缓存失效。
 
 ## 交互

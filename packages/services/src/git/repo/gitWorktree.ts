@@ -103,10 +103,11 @@ export async function addGitWorktree(context: {
   // 修复原因：git 在检出前就建好了新分支；检出失败（如 smudge 过滤器出错）或超时被终止时，分支（有时还有登记为锁定、
   // 检出一半的目录）会留下，同样的输入重试报“分支已存在”，只能手动修复仓库。
   // 修复依据：先记下起点提交与分支是否已存在，从该提交创建；失败后回滚这次尝试留下的内容。
-  const [baseCommit, existingBranch] = await Promise.all([
+  const [head, existingBranch] = await Promise.all([
     readCommit(context, "HEAD"),
     readCommit(context, `refs/heads/${branchName}`),
   ]);
+  const baseCommit = head.kind === "found" ? head.oid : null;
   // 分支名已经过 check-ref-format 校验，路径为绝对路径，都不会被当成选项解析。
   const result = await context.commandProvider.run({
     cwd: context.repoRoot,
@@ -115,7 +116,9 @@ export async function addGitWorktree(context: {
     maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
   });
   if (result.exitCode !== 0 || result.timedOut) {
-    if (baseCommit && !existingBranch) {
+    // 修复原因：分支查询超时或失败时也会得到“不存在”，已有分支恰好指向 HEAD 时回滚会把用户的分支删掉。
+    // 修复依据：只有确认分支原本不存在（rev-parse 正常以 1 退出、没有输出）时才回滚，无法判断时保留现场。
+    if (baseCommit && existingBranch.kind === "missing") {
       await rollBackFailedWorktreeAdd({ ...context, worktreePath, baseCommit }).catch(
         () => undefined,
       );
@@ -136,17 +139,24 @@ export async function addGitWorktree(context: {
   return { ok: true, branchName, worktreePath, workspacePath };
 }
 
+/** 引用查询结果：找到、确认不存在，或无法判断（超时、输出超限、其它错误）。 */
+type CommitLookup = { kind: "found"; oid: string } | { kind: "missing" } | { kind: "unknown" };
+
 async function readCommit(
   context: { commandProvider: GitCommandProvider; repoRoot: string },
   ref: string,
-): Promise<string | null> {
+): Promise<CommitLookup> {
   const result = await context.commandProvider.run({
     cwd: context.repoRoot,
     args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
     timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
   });
-  const oid = result.exitCode === 0 ? result.stdout.trim() : "";
-  return oid.length > 0 ? oid : null;
+  const oid = result.stdout.trim();
+  if (result.timedOut || result.outputTruncated) return { kind: "unknown" };
+  if (result.exitCode === 0 && oid.length > 0) return { kind: "found", oid };
+  // --verify --quiet：引用不存在时以 1 退出且没有输出。
+  if (result.exitCode === 1 && oid.length === 0) return { kind: "missing" };
+  return { kind: "unknown" };
 }
 
 /**
