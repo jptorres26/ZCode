@@ -50,6 +50,7 @@ function buildFileChange(
     isStaged: section === "staged",
     isUntracked: section === "untracked",
     isConflicted: section === "conflicted",
+    ...(entry.isSubmodule ? { isSubmodule: true } : {}),
   };
 }
 
@@ -142,6 +143,7 @@ function toBranchComparisonChange(
     isStaged: false,
     isUntracked: false,
     isConflicted: false,
+    ...(change.isSubmodule ? { isSubmodule: true } : {}),
   };
 }
 

@@ -68,6 +68,8 @@ export interface GitFileChange {
   isStaged: boolean;
   isUntracked: boolean;
   isConflicted: boolean;
+  /** 子模块（gitlink）条目：工作区中是目录，不能按文件预览。 */
+  isSubmodule?: boolean;
 }
 
 export interface GitDiffRequest {

@@ -31,6 +31,7 @@ export interface GitStatusEntry {
   y: string | null;
   isUntracked: boolean;
   isConflicted: boolean;
+  isSubmodule?: boolean;
 }
 
 export interface GitBranchComparisonChange {
@@ -39,6 +40,7 @@ export interface GitBranchComparisonChange {
   kind: GitChangeKind;
   added: number;
   removed: number;
+  isSubmodule?: boolean;
 }
 
 export interface GitResolvedRepository {

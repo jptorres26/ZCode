@@ -295,26 +295,27 @@ export function parseStatusPorcelain(stdout: string): {
     }
 
     if (record.startsWith("1 ")) {
-      const match = record.match(/^1 ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/);
+      const match = record.match(/^1 ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/);
       if (!match) {
         continue;
       }
 
       const xy = match[1]!;
       entries.push({
-        path: normalizeGitPath(match[2]!),
+        path: normalizeGitPath(match[3]!),
         originalPath: null,
         kind: inferKindFromStatusCode(xy[0] !== "." ? xy[0]! : xy[1]!),
         x: xy[0]!,
         y: xy[1]!,
         isUntracked: false,
         isConflicted: false,
+        ...submoduleFlag(match[2]!),
       });
       continue;
     }
 
     if (record.startsWith("2 ")) {
-      const match = record.match(/^2 ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/);
+      const match = record.match(/^2 ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/);
       if (!match) {
         continue;
       }
@@ -322,13 +323,14 @@ export function parseStatusPorcelain(stdout: string): {
       const originalPath = records[index + 1] ?? null;
       index += 1;
       entries.push({
-        path: normalizeGitPath(match[2]!),
+        path: normalizeGitPath(match[3]!),
         originalPath: originalPath ? normalizeGitPath(originalPath) : null,
         kind: "renamed",
         x: match[1]![0]!,
         y: match[1]![1]!,
         isUntracked: false,
         isConflicted: false,
+        ...submoduleFlag(match[2]!),
       });
       continue;
     }
@@ -338,24 +340,53 @@ export function parseStatusPorcelain(stdout: string): {
     }
 
     const match = record.match(
-      /^u ([^ ]{2}) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/,
+      /^u ([^ ]{2}) ([^ ]+) [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ (.+)$/,
     );
     if (!match) {
       continue;
     }
 
     entries.push({
-      path: normalizeGitPath(match[2]!),
+      path: normalizeGitPath(match[3]!),
       originalPath: null,
       kind: "modified",
       x: match[1]![0]!,
       y: match[1]![1]!,
       isUntracked: false,
       isConflicted: true,
+      ...submoduleFlag(match[2]!),
     });
   }
 
   return { branchName, trackingBranchName, headRefType, ahead, behind, entries };
+}
+
+/**
+ * porcelain v2 的 `<sub>` 字段：子模块为 `S<c><m><u>`，普通条目为 `N...`。
+ * 修复原因：子模块在 status 中是普通的 tracked 改动，Review 面板的“打开文件”会把目录交给文件预览并报读取错误。
+ * 修复依据：解析时标记子模块，界面据此禁用文件预览。只在是子模块时加字段，其它条目形状不变。
+ */
+function submoduleFlag(sub: string): { isSubmodule?: true } {
+  return sub.startsWith("S") ? { isSubmodule: true } : {};
+}
+
+/**
+ * `git diff --raw -z` 中两侧任一为 gitlink（mode 160000）的路径。与 `--no-renames` 一起使用：每条记录后只有一个路径。
+ */
+export function parseGitlinkPaths(stdout: string): Set<string> {
+  const records = stdout.split("\0");
+  const paths = new Set<string>();
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]!;
+    if (!record.startsWith(":")) continue;
+    const [srcMode, dstMode] = record.slice(1).split(" ");
+    const path = records[index + 1];
+    index += 1;
+    if (path && (srcMode === "160000" || dstMode === "160000")) {
+      paths.add(normalizeGitPath(path));
+    }
+  }
+  return paths;
 }
 
 function parseNumstatValue(value: string): number {
