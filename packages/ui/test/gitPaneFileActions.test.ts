@@ -152,3 +152,22 @@ test("collapsed untracked folders and deleted files can't be opened in the viewe
     false,
   );
 });
+
+test("submodule rows never offer Discard, and content-only ones can't be staged", () => {
+  const submodule = (contentOnly: boolean, section: GitChangeSectionId = "unstaged") => ({
+    ...change("sm", section),
+    isSubmodule: true,
+    ...(contentOnly ? { isSubmoduleContentOnly: true } : {}),
+  });
+  // 检出的提交变了：暂存会记录新提交；restore 不会改回子模块的检出
+  assert.deepEqual(getGitPaneFileActions(submodule(false), ready("unstaged")), ["stage"]);
+  // 只有子模块内部文件改动：git add 与 git restore 都不改变任何内容
+  assert.deepEqual(getGitPaneFileActions(submodule(true), ready("unstaged")), []);
+  assert.deepEqual(getGitPaneFileActions(submodule(false, "staged"), ready("staged")), ["unstage"]);
+  const plan = getGitPaneBulkActionPlan(
+    [change("a.ts", "unstaged"), submodule(true), { ...submodule(false), path: "sm2" }],
+    ready("unstaged"),
+  );
+  assert.deepEqual(plan.stagePaths, ["a.ts", "sm2"]);
+  assert.deepEqual(plan.discardPaths, ["a.ts"]);
+});

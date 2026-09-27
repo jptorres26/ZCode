@@ -46,6 +46,12 @@ is cleared with the revision (existing logic).
 | `branch`    | `branch`     | None (read-only comparison)                | None                                   |
 | `last-turn` | `last-turn`  | None (read-only)                           | None                                   |
 
+Submodule rows (a gitlink on the working-tree side; the service sets `isSubmodule`): `git restore`
+doesn't touch a submodule's checkout or the files inside it, so no source offers Discard (the staged
+source keeps only Unstage). When the checked-out commit is unchanged and only files inside changed
+(porcelain v2 `<sub>` such as `S.M.` or `S..U`; the service sets `isSubmoduleContentOnly`), `git add`
+records nothing either, so Stage isn't offered. Bulk actions skip these rows by the same rule.
+
 No actions render while the repository is loading, on error, when Git is unavailable, or when the
 workspace is not a repository. No actions render for datasets with `readonly === true`.
 
