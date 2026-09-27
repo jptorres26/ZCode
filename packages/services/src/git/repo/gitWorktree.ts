@@ -14,6 +14,8 @@ import { DEFAULT_GIT_COMMAND_TIMEOUT_MS, DEFAULT_GIT_OUTPUT_BYTES } from "../con
 import type { GitCommandProvider } from "../providers/gitCommandProvider.js";
 import { isRelativePathInside } from "../../fs/pathContainment.js";
 import { parseGitBranchMutationIssues } from "./gitCliHelpers.js";
+import { parseWorktreeList, realpathOrSelf } from "./gitWorktreeList.js";
+import { readCommit, rollBackFailedWorktreeAdd } from "./gitWorktreeRollback.js";
 
 /** worktree add 会检出整棵树，大仓库远超普通 Git 命令的 15s。 */
 const GIT_WORKTREE_ADD_TIMEOUT_MS = 5 * 60_000;
@@ -139,67 +141,6 @@ export async function addGitWorktree(context: {
   return { ok: true, branchName, worktreePath, workspacePath };
 }
 
-/** 引用查询结果：找到、确认不存在，或无法判断（超时、输出超限、其它错误）。 */
-type CommitLookup = { kind: "found"; oid: string } | { kind: "missing" } | { kind: "unknown" };
-
-async function readCommit(
-  context: { commandProvider: GitCommandProvider; repoRoot: string },
-  ref: string,
-): Promise<CommitLookup> {
-  const result = await context.commandProvider.run({
-    cwd: context.repoRoot,
-    args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
-    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-  });
-  const oid = result.stdout.trim();
-  if (result.timedOut || result.outputTruncated) return { kind: "unknown" };
-  if (result.exitCode === 0 && oid.length > 0) return { kind: "found", oid };
-  // --verify --quiet：引用不存在时以 1 退出且没有输出。
-  if (result.exitCode === 1 && oid.length === 0) return { kind: "missing" };
-  return { kind: "unknown" };
-}
-
-/**
- * 回滚失败的 `git worktree add`，只清理这次尝试新建的内容：目标目录此前不存在（pickFreeWorktreePath），仍登记时
- * 连同锁定一并删除；分支此前不存在（调用方判断），没有被任何 worktree 检出时按起点提交删除（update-ref 核对旧值，
- * 期间被移动过则不删）。尽力而为，任何一步失败都停止，保留剩余内容。
- */
-async function rollBackFailedWorktreeAdd(context: {
-  commandProvider: GitCommandProvider;
-  repoRoot: string;
-  worktreePath: string;
-  branchName: string;
-  baseCommit: string;
-}): Promise<void> {
-  const run = (args: string[]) =>
-    context.commandProvider.run({
-      cwd: context.repoRoot,
-      args,
-      timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-      maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
-    });
-  const listWorktrees = async () => {
-    const result = await run(["worktree", "list", "--porcelain"]);
-    if (result.exitCode !== 0) return null;
-    return await Promise.all(
-      parseWorktreeList(result.stdout).map(async (entry) => ({
-        ...entry,
-        resolved: await realpathOrSelf(entry.path),
-      })),
-    );
-  };
-  await run(["worktree", "prune"]);
-  const target = await realpathOrSelf(context.worktreePath);
-  let entries = await listWorktrees();
-  if (entries?.some((entry) => entry.resolved === target)) {
-    // 检出被中断时 git 会把新 worktree 标为锁定（initializing），需要两次 --force。
-    await run(["worktree", "remove", "--force", "--force", context.worktreePath]);
-    entries = await listWorktrees();
-  }
-  if (!entries || entries.some((entry) => entry.branchName === context.branchName)) return;
-  await run(["update-ref", "-d", `refs/heads/${context.branchName}`, context.baseCommit]);
-}
-
 /** 链接 worktree 的 Git 管理目录（`<common-dir>/worktrees/<name>`）。 */
 async function readWorktreeAdminDir(
   commandProvider: GitCommandProvider,
@@ -257,31 +198,6 @@ async function hasManagedWorktreeMarker(
   }
 }
 
-interface WorktreeListEntry {
-  path: string;
-  branchName: string | null;
-}
-
-function parseWorktreeList(stdout: string): WorktreeListEntry[] {
-  const entries: WorktreeListEntry[] = [];
-  for (const block of stdout.replace(/\r\n/g, "\n").split("\n\n")) {
-    let path: string | null = null;
-    let branchName: string | null = null;
-    for (const line of block.split("\n")) {
-      if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
-      else if (line.startsWith("branch ")) {
-        branchName = line.slice("branch ".length).replace(/^refs\/heads\//, "");
-      }
-    }
-    if (path) entries.push({ path, branchName });
-  }
-  return entries;
-}
-
-async function realpathOrSelf(path: string): Promise<string> {
-  return await realpath(path).catch(() => path);
-}
-
 function isInsideDir(child: string, parent: string): boolean {
   const relativePath = relative(parent, child);
   return relativePath.length > 0 && isRelativePathInside(relativePath);
@@ -332,12 +248,31 @@ export async function readManagedWorktree(context: {
     timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
   });
-  const lines = status.stdout.split("\n").filter((line) => line.length > 0);
+  // 修复原因：顶层的 status --ignored 不进入子模块，已初始化子模块里被忽略的文件（如 sm/cache）不会报告；
+  // 用户只同意丢弃未提交改动时，带 --force 的删除会连同它们一起删掉。
+  // 修复依据：在每个已初始化的子模块（递归）里执行同样的 status，结果与顶层合并。
+  const submoduleStatus = await context.commandProvider.run({
+    cwd: current.path,
+    args: [
+      "submodule",
+      "foreach",
+      "--quiet",
+      "--recursive",
+      "git status --porcelain --untracked-files=normal --ignored",
+    ],
+    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+    maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+  });
+  const lines = `${status.stdout}\n${submoduleStatus.stdout}`
+    .split("\n")
+    .filter((line) => line.length > 0);
   const instanceId = (await readDirectoryIdentity(current.path).catch(() => null)) ?? "";
   // 修复原因：status 失败、超时或输出超限时只记为“有未提交改动”、被忽略的文件记为没有；用户只同意丢弃改动后，
   // 删除时同样读取失败即会带 --force 删掉从未提示过的被忽略文件（如 .env）。
   // 修复依据：读不出状态时无法区分两类内容，两者都按存在处理并标出 statusUnknown，删除前须同时同意两类内容。
-  const statusUnknown = status.exitCode !== 0 || status.timedOut || status.outputTruncated;
+  const statusUnknown = [status, submoduleStatus].some(
+    (result) => result.exitCode !== 0 || result.timedOut || result.outputTruncated,
+  );
   return {
     worktreePath: current.path,
     mainWorktreePath: main.path,

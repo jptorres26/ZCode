@@ -85,7 +85,11 @@ worktreePath }`) is written to that worktree's own Git admin folder (`git rev-pa
 branchName, hasUncommittedChanges, hasIgnoredFiles, instanceId }` when those conditions hold, otherwise
   `null` (`instanceId` is the worktree folder's device, inode and birth time)
   (the main checkout and branch come from `git worktree list --porcelain`; it runs
-  `git status --porcelain --untracked-files=normal --ignored`: `hasUncommittedChanges` says whether
+  `git status --porcelain --untracked-files=normal --ignored`, and runs the same status inside every
+  initialized submodule with `git submodule foreach --quiet --recursive` (the top-level status doesn't
+  enter submodules, so files ignored there aren't reported, yet a `--force` removal deletes them). The
+  entries of both are combined, and either read failing counts as an unreadable status:
+  `hasUncommittedChanges` says whether
   there were changes, including untracked files; `hasIgnoredFiles` says whether there were files Git
   ignores (`!! ` entries such as `.env` or installed dependencies), which are deleted with the worktree.
   When the status read fails (non-zero exit, timeout or output over the limit), the two kinds can't be
